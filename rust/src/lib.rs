@@ -2,6 +2,7 @@
 //!
 //! Fully independent from the Python implementation living in `../python`.
 
+pub mod alu_sap2;
 pub mod arithmetic;
 pub mod cpu_sap1;
 pub mod decoder;

@@ -11,7 +11,7 @@
 use std::time::Instant;
 
 use sparse_energy_benchmark::cpu_sap1::Sap1;
-use sparse_energy_benchmark::hardware::{bits_to_int, Bit};
+use sparse_energy_benchmark::hardware::bits_to_int;
 
 const PROGRAM: [u8; 16] = [
     0x1F, // 0: LDA 0xF
