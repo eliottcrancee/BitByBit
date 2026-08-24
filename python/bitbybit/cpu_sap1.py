@@ -31,10 +31,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
-from pytranscpu.arithmetic import ALU8Bits
-from pytranscpu.decoder import Decoder4to16
-from pytranscpu.gates import AndGate, OrGate
-from pytranscpu.hardware import (
+from bitbybit.arithmetic import ALU8Bits
+from bitbybit.decoder import Decoder4to16
+from bitbybit.gates import AndGate, OrGate
+from bitbybit.hardware import (
     HIGH,
     HIGH_IMPEDANCE,
     LOW,
@@ -46,8 +46,8 @@ from pytranscpu.hardware import (
     bus8,
     int_to_bits,
 )
-from pytranscpu.latches import OneHotCounter6Bits, SRLatch
-from pytranscpu.memory import ProgramCounter4Bits, Ram256Bits, Register8Bits
+from bitbybit.latches import OneHotCounter6Bits, SRLatch
+from bitbybit.memory import ProgramCounter4Bits, Ram256Bits, Register8Bits
 
 
 @dataclass(frozen=True, slots=True)

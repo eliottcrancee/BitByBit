@@ -2,15 +2,15 @@
 test_latches.py
 ===============
 
-Tests for the sequential circuits in ``pytranscpu/latches.py``.
+Tests for the sequential circuits in ``bitbybit/latches.py``.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from pytranscpu.hardware import HardwareError
-from pytranscpu.latches import (
+from bitbybit.hardware import HardwareError
+from bitbybit.latches import (
     COUNTER_BITS,
     DFlipFlop,
     DFlipFlopSave,

@@ -2,14 +2,14 @@
 test_hardware.py
 ================
 
-Tests for the hardware simulation primitives in ``pytranscpu/hardware.py``.
+Tests for the hardware simulation primitives in ``bitbybit/hardware.py``.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from pytranscpu.hardware import (
+from bitbybit.hardware import (
     GND,
     HIGH,
     HIGH_IMPEDANCE,

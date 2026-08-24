@@ -18,13 +18,13 @@
 //!         Sixteen 8-bit registers addressed by a 4-to-16 decoder. Only
 //!         the addressed register drives the output bus on load.
 
-use crate::FAST_MODE;
 use crate::arithmetic::Adder8Bits;
 use crate::decoder::Decoder4to16;
 use crate::gates::AndGate;
-use crate::hardware::{Bit, Component, HardwareError, Nmos, Signal, bus8};
+use crate::hardware::{bus8, Bit, Component, HardwareError, Nmos, Signal};
 use crate::latches::DFlipFlopSaveLoad;
 use crate::mux::Mux8bits2x1;
+use crate::FAST;
 
 pub const ADDRESS_BITS: usize = 4;
 pub const RAM_REGISTERS: usize = 16;
@@ -305,11 +305,11 @@ impl Component for Ram256Bits {
             let register_save = self.save_gates[index].conduct(&[*select_line, save])?[0];
             let register_load = self.load_gates[index].conduct(&[*select_line, load])?[0];
 
-            // With `FAST_MODE`, an unselected register receives neither
+            // With `FAST`, an unselected register receives neither
             // the save nor the load signal: it cannot change state nor
             // drive the bus, so its flip-flops are left untouched (their
             // outputs stay floating on the bus row).
-            if FAST_MODE
+            if FAST
                 && register_save == Signal::Driven(Bit::Low)
                 && register_load == Signal::Driven(Bit::Low)
             {

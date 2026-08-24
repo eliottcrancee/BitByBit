@@ -3,7 +3,7 @@ gates.py
 ========
 
 Logic gates implemented as ``Component`` objects on top of the transistor
-primitives described in ``pytranscpu.hardware``.
+primitives described in ``bitbybit.hardware``.
 
 The lowest layer (``NotGate``, ``NandGate``, ``NorGate``) is wired at the
 transistor level.  The next gates (``AndGate``, ``OrGate``, ``XorGate``,
@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from functools import cache
 
-from pytranscpu import FAST
-from pytranscpu.hardware import (
+from bitbybit import FAST
+from bitbybit.hardware import (
     GND,
     HIGH,
     LOW,

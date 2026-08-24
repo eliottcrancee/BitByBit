@@ -2,8 +2,8 @@
 latches.py
 ==========
 
-Sequential circuits built on top of the gates from ``pytranscpu.gates``
-and the multiplexer from ``pytranscpu.mux``.
+Sequential circuits built on top of the gates from ``bitbybit.gates``
+and the multiplexer from ``bitbybit.mux``.
 
 Components, from the simplest to the most elaborate:
 
@@ -36,9 +36,9 @@ from __future__ import annotations
 
 from typing import Final
 
-from pytranscpu import FAST
-from pytranscpu.gates import AndGate, NorGate, NotGate
-from pytranscpu.hardware import (
+from bitbybit import FAST
+from bitbybit.gates import AndGate, NorGate, NotGate
+from bitbybit.hardware import (
     HIGH,
     LOW,
     NMOS,
@@ -48,7 +48,7 @@ from pytranscpu.hardware import (
     Signal,
     stabilize,
 )
-from pytranscpu.mux import Mux2x1
+from bitbybit.mux import Mux2x1
 
 COUNTER_BITS: Final[int] = 6
 

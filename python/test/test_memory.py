@@ -2,12 +2,12 @@
 test_memory.py
 ==============
 
-Tests for the storage components in ``pytranscpu/memory.py``.
+Tests for the storage components in ``bitbybit/memory.py``.
 """
 
 from __future__ import annotations
 
-from pytranscpu.memory import ProgramCounter4Bits, Ram256Bits, Register8Bits
+from bitbybit.memory import ProgramCounter4Bits, Ram256Bits, Register8Bits
 
 
 class TestRegister8Bits:

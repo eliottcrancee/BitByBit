@@ -2,7 +2,7 @@
 test_gates.py
 =============
 
-Tests for the logic gates in ``pytranscpu/gates.py``.
+Tests for the logic gates in ``bitbybit/gates.py``.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Final, cast
 
 import pytest
 
-from pytranscpu.gates import (
+from bitbybit.gates import (
     AndGate,
     NandGate,
     NorGate,
@@ -20,7 +20,7 @@ from pytranscpu.gates import (
     XnorGate,
     XorGate,
 )
-from pytranscpu.hardware import Bit, InvalidSignalError
+from bitbybit.hardware import Bit, InvalidSignalError
 
 # Deliberately invalid signal: neither LOW (0) nor HIGH (1). Used only to
 # check that gates reject out-of-range inputs with ``InvalidSignalError``.

@@ -2,15 +2,15 @@
 test_mux.py
 ===========
 
-Tests for the multiplexers in ``pytranscpu/mux.py``.
+Tests for the multiplexers in ``bitbybit/mux.py``.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from pytranscpu.hardware import Bit
-from pytranscpu.mux import Mux2x1, Mux8bits2x1
+from bitbybit.hardware import Bit
+from bitbybit.mux import Mux2x1, Mux8bits2x1
 
 
 class TestMux2x1:

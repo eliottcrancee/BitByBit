@@ -2,7 +2,7 @@
 mux.py
 ======
 
-Multiplexers built on top of the logic gates from ``pytranscpu.gates``.
+Multiplexers built on top of the logic gates from ``bitbybit.gates``.
 
 A 2-to-1 multiplexer forwards input ``a`` when ``select`` is LOW and
 input ``b`` when ``select`` is HIGH:
@@ -14,8 +14,8 @@ The 8-bit variant simply places eight of them in parallel.
 
 from __future__ import annotations
 
-from pytranscpu.gates import AndGate, NotGate, OrGate
-from pytranscpu.hardware import BITS_8, Bit, Byte, Component
+from bitbybit.gates import AndGate, NotGate, OrGate
+from bitbybit.hardware import BITS_8, Bit, Byte, Component
 
 
 class Mux2x1(Component):

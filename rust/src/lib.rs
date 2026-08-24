@@ -12,6 +12,6 @@ pub mod memory;
 pub mod mux;
 
 /// Compile-time switch enabling the lossless fast paths (skipping
-/// provably-inactive transistors). Mirrors `pytranscpu.FAST` on the
+/// provably-inactive transistors). Mirrors `bitbybit.FAST` on the
 /// Python side.
-pub const FAST_MODE: bool = true;
+pub const FAST: bool = true;

@@ -2,15 +2,15 @@
 test_arithmetic.py
 ==================
 
-Tests for the adders and the ALU in ``pytranscpu/arithmetic.py``.
+Tests for the adders and the ALU in ``bitbybit/arithmetic.py``.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from pytranscpu.arithmetic import Adder8Bits, ALU8Bits, FullAdder, HalfAdder
-from pytranscpu.hardware import Bit, bits_to_int, int_to_bits
+from bitbybit.arithmetic import Adder8Bits, ALU8Bits, FullAdder, HalfAdder
+from bitbybit.hardware import Bit, bits_to_int, int_to_bits
 
 
 class TestHalfAdder:

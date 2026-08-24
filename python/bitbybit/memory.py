@@ -2,12 +2,12 @@
 memory.py
 =========
 
-Storage components layered on top of ``pytranscpu.latches``,
-``pytranscpu.arithmetic``, ``pytranscpu.mux`` and
-``pytranscpu.decoder``.
+Storage components layered on top of ``bitbybit.latches``,
+``bitbybit.arithmetic``, ``bitbybit.mux`` and
+``bitbybit.decoder``.
 
 All multi-bit values are LSB-first tuples, matching the convention of
-``pytranscpu.hardware``.
+``bitbybit.hardware``.
 
     Register8Bits
         Eight D flip-flops with save/load. Writes on the rising edge
@@ -28,12 +28,14 @@ from __future__ import annotations
 
 from typing import cast
 
-from pytranscpu.arithmetic import Adder8Bits
-from pytranscpu.decoder import Decoder4to16
-from pytranscpu.gates import AndGate
-from pytranscpu.hardware import (
+from bitbybit import FAST
+from bitbybit.arithmetic import Adder8Bits
+from bitbybit.decoder import Decoder4to16
+from bitbybit.gates import AndGate
+from bitbybit.hardware import (
     BITS_8,
     HIGH,
+    HIGH_IMPEDANCE,
     LOW,
     NMOS,
     Bit,
@@ -43,8 +45,8 @@ from pytranscpu.hardware import (
     Signal,
     bus8,
 )
-from pytranscpu.latches import DFlipFlopSaveLoad
-from pytranscpu.mux import Mux8bits2x1
+from bitbybit.latches import DFlipFlopSaveLoad
+from bitbybit.mux import Mux8bits2x1
 
 ADDRESS_BITS: int = 4
 RAM_REGISTERS: int = 16
@@ -147,14 +149,28 @@ class Ram256Bits(Component):
         """
         selected = self.decoder(address)
 
-        outputs = [
-            self.registers[index](
-                data,
-                clock,
-                self.save_gates[index](selected[index], save),
-                self.load_gates[index](selected[index], load),
+        outputs: list[Bus8] = []
+        for index in range(RAM_REGISTERS):
+            register_save = self.save_gates[index](selected[index], save)
+            register_load = self.load_gates[index](selected[index], load)
+
+            # With ``FAST``, an unselected register receives neither
+            # the save nor the load signal: it cannot change state nor
+            # drive the bus, so its flip-flops are left untouched (their
+            # outputs stay floating on the bus row).
+            if FAST and register_save == LOW and register_load == LOW:
+                outputs.append(
+                    cast(Bus8, (HIGH_IMPEDANCE,) * BITS_8)
+                )
+                continue
+
+            outputs.append(
+                cast(
+                    Bus8,
+                    self.registers[index](
+                        data, clock, register_save, register_load
+                    ),
+                )
             )
-            for index in range(RAM_REGISTERS)
-        ]
 
         return bus8(*outputs)

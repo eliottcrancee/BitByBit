@@ -2,7 +2,7 @@
 decoder.py
 ==========
 
-Binary decoders built on top of the logic gates from ``pytranscpu.gates``.
+Binary decoders built on top of the logic gates from ``bitbybit.gates``.
 
 A decoder activates exactly one output line for a given binary input
 value. For ``Decoder2to4``, the output index activated by inputs
@@ -17,8 +17,8 @@ output index is ``inputs[0] + 2 * inputs[1] + 4 * inputs[2] +
 
 from __future__ import annotations
 
-from pytranscpu.gates import AndGate, NotGate
-from pytranscpu.hardware import Bit, Component
+from bitbybit.gates import AndGate, NotGate
+from bitbybit.hardware import Bit, Component
 
 
 class Decoder2to4(Component):

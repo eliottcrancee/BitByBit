@@ -62,7 +62,7 @@ CPU (SAP-1)
 
 ```
 python/                    # Python implementation (uv-managed)
-    pytranscpu/            # the `pytranscpu` package
+    bitbybit/            # the `bitbybit` package
         hardware.py        # transistors, wire, bus, signal model, cost, helpers
         gates.py           # logic gates built from transistors
         mux.py             # 2:1 and 8-bit multiplexers
@@ -192,8 +192,8 @@ uv sync
 Build the CPU, load a small program into RAM and run it:
 
 ```python
-from pytranscpu.cpu_sap1 import SAP1
-from pytranscpu.hardware import bits_to_int
+from bitbybit.cpu_sap1 import SAP1
+from bitbybit.hardware import bits_to_int
 
 cpu = SAP1()
 print("Transistors:", cpu.transistor_count)
@@ -235,8 +235,8 @@ Register and RAM contents are inspectable at any time, e.g.
 ### A loop that multiplies 3 × 5, then halts
 
 ```python
-from pytranscpu.cpu_sap1 import SAP1
-from pytranscpu.hardware import bits_to_int
+from bitbybit.cpu_sap1 import SAP1
+from bitbybit.hardware import bits_to_int
 
 cpu = SAP1()
 program = [

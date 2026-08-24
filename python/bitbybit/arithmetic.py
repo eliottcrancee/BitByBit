@@ -3,7 +3,7 @@ arithmetic.py
 =============
 
 Binary adders and the arithmetic/logic unit of the SAP-1, layered on
-top of the logic gates from ``pytranscpu.gates``.
+top of the logic gates from ``bitbybit.gates``.
 
 Bits are given least significant bit first, both for the inputs and
 the outputs:
@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from typing import cast
 
-from pytranscpu.gates import AndGate, NotGate, OrGate, XorGate
-from pytranscpu.hardware import (
+from bitbybit.gates import AndGate, NotGate, OrGate, XorGate
+from bitbybit.hardware import (
     BITS_8,
     LOW,
     NMOS,

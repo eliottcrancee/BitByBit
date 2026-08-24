@@ -2,13 +2,13 @@
 test_cpu_sap1.py
 ================
 
-Tests for the SAP-1 computer implementation in ``pytranscpu/cpu_sap1.py``.
+Tests for the SAP-1 computer implementation in ``bitbybit/cpu_sap1.py``.
 """
 
 from __future__ import annotations
 
-from pytranscpu.cpu_sap1 import SAP1, ControlUnit
-from pytranscpu.hardware import bits_to_int
+from bitbybit.cpu_sap1 import SAP1, ControlUnit
+from bitbybit.hardware import bits_to_int
 
 
 class TestSAP1:

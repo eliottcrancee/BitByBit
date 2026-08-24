@@ -2,7 +2,7 @@
 test_decoder.py
 ===============
 
-Tests for the decoders in ``pytranscpu/decoder.py``.
+Tests for the decoders in ``bitbybit/decoder.py``.
 """
 
 from __future__ import annotations
@@ -11,8 +11,8 @@ from typing import cast
 
 import pytest
 
-from pytranscpu.decoder import Decoder2to4, Decoder4to16
-from pytranscpu.hardware import Bit, int_to_bits
+from bitbybit.decoder import Decoder2to4, Decoder4to16
+from bitbybit.hardware import Bit, int_to_bits
 
 
 class TestDecoder2to4:
