@@ -1,8 +1,8 @@
-# PyTransCPU
+# BitByBit
 
 **From a single transistor to a working SAP-1 CPU — simulated in Python.**
 
-PyTransCPU is an educational, bottom-up simulation of a complete CPU. It
+BitByBit is an educational, bottom-up simulation of a complete CPU. It
 models a machine literally from its most elementary physical components: PMOS
 and NMOS transistors. On top of them it builds every logic gate, every
 multiplexer, every adder, every flip-flop, and finally a full computer — the
@@ -61,16 +61,16 @@ CPU (SAP-1)
 ### Project layout
 
 ```
-python/                # Python implementation (uv-managed)
-    pytranscpu/
-        hardware.py    # transistors, wire, bus, signal model, cost, helpers
-    gates.py       # logic gates built from transistors
-    mux.py         # 2:1 and 8-bit multiplexers
-    decoder.py     # 2-to-4 and 4-to-16 decoders
-    arithmetic.py  # half/full adders, 8-bit adder, ALU
+python/                    # Python implementation (uv-managed)
+    pytranscpu/            # the `pytranscpu` package
+        hardware.py        # transistors, wire, bus, signal model, cost, helpers
+        gates.py           # logic gates built from transistors
+        mux.py             # 2:1 and 8-bit multiplexers
+        decoder.py         # 2-to-4 and 4-to-16 decoders
+        arithmetic.py      # half/full adders, 8-bit adder, ALU
     latches.py     # SR latch, D latch, D flip-flops, ring counter
-        memory.py      # 8-bit register, program counter, 256-bit RAM
-        cpu_sap1.py    # control unit + the whole SAP-1 computer
+        memory.py          # 8-bit register, program counter, 256-bit RAM
+        cpu_sap1.py        # control unit + the whole SAP-1 computer
 
     test/              # pytest suite for every module
 
