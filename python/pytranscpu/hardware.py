@@ -84,6 +84,10 @@ class HardwareError(Exception):
     """Generic hardware simulator error."""
 
 
+class InvalidBitError(HardwareError):
+    """A bit is not a valid logic value."""
+
+
 class InvalidSignalError(HardwareError):
     """A signal is not a valid logic value."""
 

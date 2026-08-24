@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from typing import Final
 
+from pytranscpu import FAST
 from pytranscpu.gates import AndGate, NorGate, NotGate
 from pytranscpu.hardware import (
     HIGH,
@@ -64,6 +65,17 @@ class SRLatch(Component):
         self.q: Bit = LOW
         self.q_bar: Bit = HIGH
 
+    def _fast_call(self, set_signal: Bit, reset_signal: Bit) -> tuple[Bit, Bit]:
+        """Do the logic without using the stabilize() function."""
+        if set_signal == HIGH:
+            self.q = HIGH
+            self.q_bar = LOW
+        elif reset_signal == HIGH:
+            self.q = LOW
+            self.q_bar = HIGH
+
+        return self.q, self.q_bar
+
     def __call__(self, set_signal: Bit, reset_signal: Bit) -> tuple[Bit, Bit]:
         """Update the latch and return ``(q, q_bar)``.
 
@@ -78,6 +90,9 @@ class SRLatch(Component):
         # can store a valid state in these conditions.
         if set_signal == HIGH and reset_signal == HIGH:
             raise HardwareError("SET and RESET cannot be HIGH at the same time.")
+
+        if FAST:
+            return self._fast_call(set_signal, reset_signal)
 
         def get_state() -> tuple[Bit, Bit]:
             return self.q, self.q_bar

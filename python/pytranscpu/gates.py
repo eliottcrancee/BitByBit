@@ -18,13 +18,19 @@ Numeric signal model inherited from ``hardware``:
 
 from __future__ import annotations
 
+from functools import cache
+
+from pytranscpu import FAST
 from pytranscpu.hardware import (
     GND,
+    HIGH,
+    LOW,
     NMOS,
     PMOS,
     VCC,
     Bit,
     Component,
+    InvalidBitError,
     validate_bit,
     wire,
 )
@@ -37,6 +43,17 @@ class NotGate(Component):
         self.pmos = PMOS()
         self.nmos = NMOS()
 
+    @staticmethod
+    @cache
+    def _fast_call(a: Bit) -> Bit:
+        """Do the logic fast."""
+        if a == HIGH:
+            return LOW
+        elif a == LOW:
+            return HIGH
+        else:
+            raise InvalidBitError(f"Invalid bit value: {a}")
+
     def __call__(self, a: Bit) -> Bit:
         """Return the logical negation of ``a``.
 
@@ -44,6 +61,8 @@ class NotGate(Component):
         HIGH the NMOS drives GND to the output.  The output is the wire
         joining both transistor branches.
         """
+        if FAST:
+            return self._fast_call(a)
         return validate_bit(
             wire(
                 self.pmos(gate=a, source=VCC),
@@ -61,8 +80,21 @@ class NandGate(Component):
         self.nmos1 = NMOS()
         self.nmos2 = NMOS()
 
+    @staticmethod
+    @cache
+    def _fast_call(a: Bit, b: Bit) -> Bit:
+        """Do the logic fast."""
+        if a == HIGH and b == HIGH:
+            return LOW
+        elif a == LOW or b == LOW:
+            return HIGH
+        else:
+            raise InvalidBitError(f"Invalid bit values: {a}, {b}")
+
     def __call__(self, a: Bit, b: Bit) -> Bit:
         """Return HIGH except when A and B are both HIGH."""
+        if FAST:
+            return self._fast_call(a, b)
         pmos_output1 = self.pmos1(gate=a, source=VCC)
         pmos_output2 = self.pmos2(gate=b, source=VCC)
 
@@ -81,8 +113,21 @@ class NorGate(Component):
         self.nmos1 = NMOS()
         self.nmos2 = NMOS()
 
+    @staticmethod
+    @cache
+    def _fast_call(a: Bit, b: Bit) -> Bit:
+        """Do the logic fast."""
+        if a == LOW and b == LOW:
+            return HIGH
+        elif a == HIGH or b == HIGH:
+            return LOW
+        else:
+            raise InvalidBitError(f"Invalid bit values: {a}, {b}")
+
     def __call__(self, a: Bit, b: Bit) -> Bit:
         """Return HIGH only when both are LOW."""
+        if FAST:
+            return self._fast_call(a, b)
         pmos_intermediate = self.pmos1(gate=a, source=VCC)
         pmos_output = self.pmos2(gate=b, source=pmos_intermediate)
 
@@ -99,7 +144,20 @@ class AndGate(Component):
         self.nand_gate = NandGate()
         self.not_gate = NotGate()
 
+    @staticmethod
+    @cache
+    def _fast_call(a: Bit, b: Bit) -> Bit:
+        """Do the logic fast."""
+        if a == HIGH and b == HIGH:
+            return HIGH
+        elif a == LOW or b == LOW:
+            return LOW
+        else:
+            raise InvalidBitError(f"Invalid bit values: {a}, {b}")
+
     def __call__(self, a: Bit, b: Bit) -> Bit:
+        if FAST:
+            return self._fast_call(a, b)
         return self.not_gate(self.nand_gate(a, b))
 
 
@@ -110,7 +168,20 @@ class OrGate(Component):
         self.nor_gate = NorGate()
         self.not_gate = NotGate()
 
+    @staticmethod
+    @cache
+    def _fast_call(a: Bit, b: Bit) -> Bit:
+        """Do the logic fast."""
+        if a == LOW and b == LOW:
+            return LOW
+        elif a == HIGH or b == HIGH:
+            return HIGH
+        else:
+            raise InvalidBitError(f"Invalid bit values: {a}, {b}")
+
     def __call__(self, a: Bit, b: Bit) -> Bit:
+        if FAST:
+            return self._fast_call(a, b)
         return self.not_gate(self.nor_gate(a, b))
 
 
@@ -123,7 +194,20 @@ class XorGate(Component):
         self.nand3 = NandGate()
         self.nand4 = NandGate()
 
+    @staticmethod
+    @cache
+    def _fast_call(a: Bit, b: Bit) -> Bit:
+        """Do the logic fast."""
+        if a == LOW and b == LOW or a == HIGH and b == HIGH:
+            return LOW
+        elif (a == HIGH and b == LOW) or (a == LOW and b == HIGH):
+            return HIGH
+        else:
+            raise InvalidBitError(f"Invalid bit values: {a}, {b}")
+
     def __call__(self, a: Bit, b: Bit) -> Bit:
+        if FAST:
+            return self._fast_call(a, b)
         nand_ab = self.nand1(a, b)
         nand_a = self.nand2(a, nand_ab)
         nand_b = self.nand3(b, nand_ab)
@@ -137,5 +221,18 @@ class XnorGate(Component):
         self.xor_gate = XorGate()
         self.not_gate = NotGate()
 
+    @staticmethod
+    @cache
+    def _fast_call(a: Bit, b: Bit) -> Bit:
+        """Do the logic fast."""
+        if a == LOW and b == LOW or a == HIGH and b == HIGH:
+            return HIGH
+        elif (a == HIGH and b == LOW) or (a == LOW and b == HIGH):
+            return LOW
+        else:
+            raise InvalidBitError(f"Invalid bit values: {a}, {b}")
+
     def __call__(self, a: Bit, b: Bit) -> Bit:
+        if FAST:
+            return self._fast_call(a, b)
         return self.not_gate(self.xor_gate(a, b))

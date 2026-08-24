@@ -1,7 +1,0 @@
-{
-    "typeCheckingMode": "strict",
-    "pythonVersion": "3.13",
-    "venvPath": ".",
-    "venv": ".venv",
-    "include": ["test/test_gates.py"]
-}

@@ -61,17 +61,20 @@ CPU (SAP-1)
 ### Project layout
 
 ```
-pytranscpu/
-    hardware.py    # transistors, wire, bus, signal model, cost, helpers
+python/                # Python implementation (uv-managed)
+    pytranscpu/
+        hardware.py    # transistors, wire, bus, signal model, cost, helpers
     gates.py       # logic gates built from transistors
     mux.py         # 2:1 and 8-bit multiplexers
     decoder.py     # 2-to-4 and 4-to-16 decoders
     arithmetic.py  # half/full adders, 8-bit adder, ALU
     latches.py     # SR latch, D latch, D flip-flops, ring counter
-    memory.py      # 8-bit register, program counter, 256-bit RAM
-    cpu_sap1.py    # control unit + the whole SAP-1 computer
+        memory.py      # 8-bit register, program counter, 256-bit RAM
+        cpu_sap1.py    # control unit + the whole SAP-1 computer
 
-test/              # pytest suite for every module
+    test/              # pytest suite for every module
+
+rust/                  # Rust implementation (Cargo), fully independent
 ```
 
 ---
@@ -204,8 +207,7 @@ print("Halted:", cpu.halted)
 print("Accumulator:", bits_to_int(cpu.out))  # -> 10
 ```
 
-A commented multiply-by-loop example lives in `debug_loop.py`; a low-level
-step-by-step debugger in `debug_sap1.py`.
+A commented multiply-by-loop example lives in `python/debug_loop.py`.
 
 ### Driving the clock manually
 
@@ -264,6 +266,7 @@ The project ships a pytest suite covering every module, including end-to-end
 instruction tests for the CPU.
 
 ```powershell
+cd python
 uv run pytest
 ```
 

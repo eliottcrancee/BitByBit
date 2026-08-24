@@ -1,0 +1,13 @@
+[package]
+name = "sparse_energy_benchmark"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# The doc comments contain pseudo-code diagrams, not runnable Rust examples.
+doctest = false
+
+
+[dependencies]
+highs = "2.4.0"
+rand = "0.10.2"

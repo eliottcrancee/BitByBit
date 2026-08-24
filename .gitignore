@@ -13,3 +13,6 @@ wheels/
 
 # VS Code settings
 .vscode/
+
+# Rust
+rust/target/
