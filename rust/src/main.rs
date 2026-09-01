@@ -16,9 +16,9 @@ use sparse_energy_benchmark::utils::bits_to_int;
 
 const PROGRAM: [u8; 16] = [
     0x1E, // 0: LDA 0xE  (load outer count)
-    0x7B, // 1: JZ 0xB   (outer done -> HLT)
-    0x3C, // 2: SUB 0xC  (outer -= 1)
-    0x4E, // 3: STA 0xE
+    0x3C, // 1: SUB 0xC  (outer -= 1)
+    0x4E, // 2: STA 0xE
+    0x7B, // 3: JZ 0xB   (outer reached 0 -> HLT; SUB sets Z, not LDA)
     0x5F, // 4: LDI 0xF  (reload inner count = 15)
     0x4D, // 5: STA 0xD
     0x1D, // 6: LDA 0xD  (inner loop)
@@ -27,10 +27,10 @@ const PROGRAM: [u8; 16] = [
     0x70, // 9: JZ 0     (inner done -> outer loop)
     0x66, // A: JMP 6
     0xF0, // B: HLT
-    0x00, // C: unused
-    0x01, // D: constant 1
+    0x01, // C: constant 1
+    0x0F, // D: initial inner count = 15
     0x0F, // E: outer count = 15
-    0x0F, // F: inner count = 15
+    0x00, // F: unused
 ];
 
 /// Runs the program once and returns the number of instructions executed.
@@ -50,7 +50,7 @@ fn run_once() -> u64 {
 }
 
 fn main() {
-    const RUNS: u32 = 1;
+    const RUNS: u32 = 10;
 
     let start = Instant::now();
     let mut total_instructions = 0u64;
