@@ -20,6 +20,9 @@ pub struct Mux2x1 {
 }
 
 impl Component for Mux2x1 {
+    const INPUTS: usize = 3;
+    const OUTPUTS: usize = 1;
+
     /// Inputs:
     ///
     /// - 0: a
@@ -29,7 +32,11 @@ impl Component for Mux2x1 {
     /// Outputs:
     ///
     /// - 0: `a` when `select` is Low, `b` when `select` is High.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b, select] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 3,
@@ -37,11 +44,16 @@ impl Component for Mux2x1 {
             });
         };
 
-        let not_select = self.not_select.conduct(&[*select])?;
-        let path_a = self.and_a.conduct(&[*a, not_select[0]])?;
-        let path_b = self.and_b.conduct(&[*b, *select])?;
+        let mut not_select = [Signal::HighImpedance];
+        self.not_select.conduct_into(&[*select], &mut not_select)?;
+        let mut path_a = [Signal::HighImpedance];
+        self.and_a
+            .conduct_into(&[*a, not_select[0]], &mut path_a)?;
+        let mut path_b = [Signal::HighImpedance];
+        self.and_b.conduct_into(&[*b, *select], &mut path_b)?;
 
-        self.or_output.conduct(&[path_a[0], path_b[0]])
+        self.or_output
+            .conduct_into(&[path_a[0], path_b[0]], outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -59,6 +71,9 @@ pub struct Mux8bits2x1 {
 }
 
 impl Component for Mux8bits2x1 {
+    const INPUTS: usize = 17;
+    const OUTPUTS: usize = 8;
+
     /// Inputs:
     ///
     /// - 0..8:  a, least-significant bit first
@@ -68,27 +83,25 @@ impl Component for Mux8bits2x1 {
     /// Outputs:
     ///
     /// - 0..8: the selected operand, least-significant bit first.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 17 {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        let [.., select] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 17,
                 actual: inputs.len(),
             });
+        };
+
+        for (index, mux) in self.muxes.iter().enumerate() {
+            let a = inputs[index];
+            let b = inputs[8 + index];
+            mux.conduct_into(&[a, b, *select], &mut outputs[index..index + 1])?;
         }
 
-        let select = inputs[16];
-        let mut outputs = Vec::with_capacity(8);
-
-        for (mux, (a, b)) in self
-            .muxes
-            .iter()
-            .zip(inputs[..8].iter().zip(inputs[8..16].iter()))
-        {
-            let output = mux.conduct(&[*a, *b, select])?;
-            outputs.push(output[0]);
-        }
-
-        Ok(outputs)
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {

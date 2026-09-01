@@ -22,6 +22,9 @@ pub struct Decoder2to4 {
 }
 
 impl Component for Decoder2to4 {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 4;
+
     /// Inputs:
     ///
     /// - 0: a, most significant bit
@@ -30,7 +33,11 @@ impl Component for Decoder2to4 {
     /// Outputs:
     ///
     /// - exactly one output is Driven(High): the one at index `2 * a + b`.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -38,15 +45,17 @@ impl Component for Decoder2to4 {
             });
         };
 
-        let not_a = self.not_a.conduct(&[*a])?;
-        let not_b = self.not_b.conduct(&[*b])?;
+        let mut not_a = [Signal::HighImpedance];
+        self.not_a.conduct_into(&[*a], &mut not_a)?;
+        let mut not_b = [Signal::HighImpedance];
+        self.not_b.conduct_into(&[*b], &mut not_b)?;
 
-        let output_0 = self.and_gates[0].conduct(&[not_a[0], not_b[0]])?;
-        let output_1 = self.and_gates[1].conduct(&[not_a[0], *b])?;
-        let output_2 = self.and_gates[2].conduct(&[*a, not_b[0]])?;
-        let output_3 = self.and_gates[3].conduct(&[*a, *b])?;
+        self.and_gates[0].conduct_into(&[not_a[0], not_b[0]], &mut outputs[0..1])?;
+        self.and_gates[1].conduct_into(&[not_a[0], *b], &mut outputs[1..2])?;
+        self.and_gates[2].conduct_into(&[*a, not_b[0]], &mut outputs[2..3])?;
+        self.and_gates[3].conduct_into(&[*a, *b], &mut outputs[3..4])?;
 
-        Ok(vec![output_0[0], output_1[0], output_2[0], output_3[0]])
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -69,6 +78,9 @@ pub struct Decoder4to16 {
 }
 
 impl Component for Decoder4to16 {
+    const INPUTS: usize = 4;
+    const OUTPUTS: usize = 16;
+
     /// Inputs:
     ///
     /// - 0..4: the value, least significant bit first.
@@ -76,28 +88,32 @@ impl Component for Decoder4to16 {
     /// Outputs:
     ///
     /// - exactly one output is Driven(High): the one at the input value.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 4 {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        let [a, b, c, d] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 4,
                 actual: inputs.len(),
             });
-        }
+        };
 
         // `Decoder2to4(a, b)` activates index `2 * a + b`, so the most
         // significant bit of each pair must be given first.
-        let high_group = self.high_decoder.conduct(&[inputs[3], inputs[2]])?;
-        let low_group = self.low_decoder.conduct(&[inputs[1], inputs[0]])?;
-
-        let mut outputs = Vec::with_capacity(16);
+        let mut high_group = [Signal::HighImpedance; 4];
+        self.high_decoder
+            .conduct_into(&[*d, *c], &mut high_group)?;
+        let mut low_group = [Signal::HighImpedance; 4];
+        self.low_decoder.conduct_into(&[*b, *a], &mut low_group)?;
 
         for index in 0..16 {
-            let output =
-                self.and_gates[index].conduct(&[high_group[index / 4], low_group[index % 4]])?;
-            outputs.push(output[0]);
+            self.and_gates[index]
+                .conduct_into(&[high_group[index / 4], low_group[index % 4]], &mut outputs[index..index + 1])?;
         }
 
-        Ok(outputs)
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {

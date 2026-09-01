@@ -11,6 +11,7 @@ pub mod hardware;
 pub mod latches;
 pub mod memory;
 pub mod mux;
+pub mod utils;
 
 /// Compile-time switch enabling the lossless fast paths (skipping
 /// provably-inactive transistors). Mirrors `bitbybit.FAST` on the

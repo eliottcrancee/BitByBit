@@ -9,7 +9,8 @@
 //!   `A + NOT(B) + 1` (two's complement).
 
 use crate::gates::{AndGate, NotGate, OrGate, XorGate};
-use crate::hardware::{Component, HardwareError, Nmos, Signal};
+use crate::hardware::{Bit, Component, HardwareError, Nmos, Signal};
+use crate::FAST;
 
 /// One-bit adder without carry input: sum = A XOR B, carry = A AND B.
 #[derive(Debug, Default)]
@@ -19,17 +20,30 @@ pub struct HalfAdder {
 }
 
 impl Component for HalfAdder {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 2;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 2,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
 
-        let sum = self.xor.conduct(&[*a, *b])?;
-        let carry = self.and.conduct(&[*a, *b])?;
-        Ok(vec![sum[0], carry[0]])
+        let mut single = [Signal::HighImpedance; 1];
+
+        self.xor.conduct_into(&[*a, *b], &mut single)?;
+        outputs[0] = single[0];
+
+        self.and.conduct_into(&[*a, *b], &mut single)?;
+        outputs[1] = single[0];
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -46,17 +60,34 @@ pub struct FullAdder {
 }
 
 impl Component for FullAdder {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 3;
+    const OUTPUTS: usize = 2;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b, carry_in] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 3,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
-        let result1 = self.half_adder1.conduct(&[*a, *b])?;
-        let result2 = self.half_adder2.conduct(&[result1[0], *carry_in])?;
-        let carry_out = self.or.conduct(&[result1[1], result2[1]])?;
-        Ok(vec![result2[0], carry_out[0]])
+
+        let mut ha1_out = [Signal::HighImpedance; 2];
+        self.half_adder1.conduct_into(&[*a, *b], &mut ha1_out)?;
+
+        let mut ha2_out = [Signal::HighImpedance; 2];
+        self.half_adder2.conduct_into(&[ha1_out[0], *carry_in], &mut ha2_out)?;
+
+        let mut single = [Signal::HighImpedance; 1];
+        self.or.conduct_into(&[ha1_out[1], ha2_out[1]], &mut single)?;
+
+        outputs[0] = ha2_out[0];
+        outputs[1] = single[0];
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -73,6 +104,9 @@ pub struct Adder8Bits {
 }
 
 impl Component for Adder8Bits {
+    const INPUTS: usize = 17;
+    const OUTPUTS: usize = 9;
+
     /// Inputs:
     ///
     /// - 0..8:   a, least significant bit first
@@ -85,31 +119,36 @@ impl Component for Adder8Bits {
     /// - 8:    carry_out
     ///
     /// Computes `a + b + carry_in`.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 17 {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 17,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         }
 
         let mut carry = inputs[16];
-        let mut result = Vec::with_capacity(9);
+        let mut fa_out = [Signal::HighImpedance; 2];
 
-        for (full_adder, (a, b)) in self
+        for (index, (full_adder, (a, b))) in self
             .full_adders
             .iter()
             .zip(inputs[..8].iter().zip(inputs[8..16].iter()))
+            .enumerate()
         {
-            let output = full_adder.conduct(&[*a, *b, carry])?;
+            full_adder.conduct_into(&[*a, *b, carry], &mut fa_out)?;
 
-            result.push(output[0]);
-            carry = output[1];
+            outputs[index] = fa_out[0];
+            carry = fa_out[1];
         }
 
-        result.push(carry);
+        outputs[8] = carry;
 
-        Ok(result)
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -129,27 +168,40 @@ pub struct ZeroDetector8Bits {
 }
 
 impl Component for ZeroDetector8Bits {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 8 {
+    const INPUTS: usize = 8;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 8,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         }
 
-        let pair_01 = self.or_gates[0].conduct(&[inputs[0], inputs[1]])?;
-        let pair_23 = self.or_gates[1].conduct(&[inputs[2], inputs[3]])?;
-        let pair_45 = self.or_gates[2].conduct(&[inputs[4], inputs[5]])?;
-        let pair_67 = self.or_gates[3].conduct(&[inputs[6], inputs[7]])?;
+        let mut single = [Signal::HighImpedance; 1];
 
-        let half_0123 = self.or_gates[4].conduct(&[pair_01[0], pair_23[0]])?;
-        let half_4567 = self.or_gates[5].conduct(&[pair_45[0], pair_67[0]])?;
+        self.or_gates[0].conduct_into(&[inputs[0], inputs[1]], &mut single)?;
+        let pair_01 = single[0];
+        self.or_gates[1].conduct_into(&[inputs[2], inputs[3]], &mut single)?;
+        let pair_23 = single[0];
+        self.or_gates[2].conduct_into(&[inputs[4], inputs[5]], &mut single)?;
+        let pair_45 = single[0];
+        self.or_gates[3].conduct_into(&[inputs[6], inputs[7]], &mut single)?;
+        let pair_67 = single[0];
 
-        let any_bit_high = self.or_gates[6].conduct(&[half_0123[0], half_4567[0]])?;
+        self.or_gates[4].conduct_into(&[pair_01, pair_23], &mut single)?;
+        let half_0123 = single[0];
+        self.or_gates[5].conduct_into(&[pair_45, pair_67], &mut single)?;
+        let half_4567 = single[0];
 
-        let zero = self.not.conduct(&[any_bit_high[0]])?;
+        self.or_gates[6].conduct_into(&[half_0123, half_4567], &mut single)?;
 
-        Ok(vec![zero[0]])
+        self.not.conduct_into(&[single[0]], outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -206,10 +258,22 @@ impl Component for ALU8Bits {
     /// The result is gated by `load`. When `load = Low`, the
     /// result bits are HighImpedance, while the flags remain
     /// valid.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 18 {
+    ///
+    /// With `FAST`, a Low `load` skips the whole computation: the
+    /// result bits *and* the flags come out HighImpedance, since a
+    /// caller reading the flags with `load` Low would capture a
+    /// floating line anyway.
+    const INPUTS: usize = 18;
+    const OUTPUTS: usize = 10;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 18,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         }
@@ -219,15 +283,22 @@ impl Component for ALU8Bits {
         let subtract = inputs[16];
         let load = inputs[17];
 
+        // With `FAST`, an ALU whose output buffer is disabled cannot
+        // drive anything: skip the XOR row, the adder and the
+        // zero detector entirely.
+        if FAST && load == Signal::Driven(Bit::Low) {
+            outputs.fill(Signal::HighImpedance);
+            return Ok(());
+        }
+
         // B' = B XOR subtract
         //
         // subtract = 0 -> B' = B
         // subtract = 1 -> B' = NOT B
-        let mut modified_b = Vec::with_capacity(8);
+        let mut modified_b = [Signal::HighImpedance; 8];
 
-        for (xor, b_bit) in self.b_xors.iter().zip(b.iter()) {
-            let bit = xor.conduct(&[*b_bit, subtract])?;
-            modified_b.push(bit[0]);
+        for index in 0..8 {
+            self.b_xors[index].conduct_into(&[b[index], subtract], &mut modified_b[index..index + 1])?;
         }
 
         // A + B' + subtract
@@ -237,41 +308,37 @@ impl Component for ALU8Bits {
         //
         // Subtraction:
         //     A + NOT(B) + 1
-        let mut adder_inputs = Vec::with_capacity(17);
+        let mut adder_inputs = [Signal::HighImpedance; 17];
+        adder_inputs[..8].copy_from_slice(a);
+        adder_inputs[8..16].copy_from_slice(&modified_b);
+        adder_inputs[16] = subtract;
 
-        adder_inputs.extend_from_slice(a);
-        adder_inputs.extend_from_slice(&modified_b);
-        adder_inputs.push(subtract);
-
-        let adder_output = self.adder.conduct(&adder_inputs)?;
-
-        // Adder8Bits returns:
-        //
-        // [sum0, sum1, ..., sum7, carry]
-        //
-        let sum = &adder_output[0..8];
-        let carry_flag = adder_output[8];
+        // Adder8Bits returns [sum0, ..., sum7, carry].
+        let mut adder_output = [Signal::HighImpedance; 9];
+        self.adder.conduct_into(&adder_inputs, &mut adder_output)?;
 
         // Zero flag is computed from the actual arithmetic result,
         // independently of whether the result is currently driving
         // the bus.
-        let zero_flag = self.zero_detector.conduct(sum)?[0];
+        let mut zero_flag = [Signal::HighImpedance; 1];
+        self.zero_detector
+            .conduct_into(&adder_output[0..8], &mut zero_flag)?;
 
         // Tri-state output buffer.
         //
         // load = 1 -> result drives the bus
         // load = 0 -> result is high impedance
-        let mut result = Vec::with_capacity(10);
-
-        for (nmos, sum_bit) in self.output_nmos.iter().zip(sum.iter()) {
-            let output = nmos.conduct(&[load, *sum_bit])?;
-            result.push(output[0]);
+        for index in 0..8 {
+            self.output_nmos[index].conduct_into(
+                &[load, adder_output[index]],
+                &mut outputs[index..index + 1],
+            )?;
         }
 
-        result.push(carry_flag);
-        result.push(zero_flag);
+        outputs[8] = adder_output[8];
+        outputs[9] = zero_flag[0];
 
-        Ok(result)
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -433,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_alu8bits_subtraction() {
-        use crate::hardware::{bits_to_int, int_to_bits};
+        use crate::utils::{bits_to_int, int_to_bits};
 
         let alu = ALU8Bits::default();
 

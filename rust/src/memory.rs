@@ -68,10 +68,17 @@ impl Component for Register8Bits {
     ///   when `load` is Low.
     ///
     /// Store `data` on the rising edge of `clock` when `save` is High.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 11 {
+    const INPUTS: usize = 11;
+    const OUTPUTS: usize = 8;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 11,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         }
@@ -80,14 +87,34 @@ impl Component for Register8Bits {
         let save = inputs[9];
         let load = inputs[10];
 
-        let mut outputs = Vec::with_capacity(8);
+        // With `FAST`, a High clock disables the master latches and a
+        // Low `save` blocks the slave capture: no flip-flop can change
+        // state during this call, so the whole propagation is skipped
+        // and the stored state is returned (floating when `load` is
+        // Low). Low-clock calls are always propagated: the masters
+        // must preload there, since they are the value captured at the
+        // next rising edge.
+        if FAST && clock == Signal::Driven(Bit::High) && save == Signal::Driven(Bit::Low) {
+            match load {
+                Signal::Driven(Bit::High) => {
+                    for (slot, bit) in outputs.iter_mut().zip(self.state()) {
+                        *slot = Signal::from(bit);
+                    }
+                }
+                _ => outputs.fill(Signal::HighImpedance),
+            }
 
-        for (index, flip_flop) in self.flip_flops.iter().enumerate() {
-            let output = flip_flop.conduct(&[inputs[index], clock, save, load])?;
-            outputs.push(output[0]);
+            return Ok(());
         }
 
-        Ok(outputs)
+        let mut slot = [Signal::HighImpedance; DFlipFlopSaveLoad::OUTPUTS];
+
+        for (index, flip_flop) in self.flip_flops.iter().enumerate() {
+            flip_flop.conduct_into(&[inputs[index], clock, save, load], &mut slot)?;
+            outputs[index] = slot[0];
+        }
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -115,6 +142,22 @@ impl ProgramCounter4Bits {
     }
 }
 
+impl ProgramCounter4Bits {
+    /// Gate the four low bits of `stored` through the output NMOS row.
+    fn gate_output(
+        &self,
+        load: Signal,
+        stored: &[Signal; 8],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        for (index, nmos) in self.output_nmos.iter().enumerate() {
+            nmos.conduct_into(&[load, stored[index]], &mut outputs[index..index + 1])?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Component for ProgramCounter4Bits {
     /// Inputs:
     ///
@@ -138,10 +181,17 @@ impl Component for ProgramCounter4Bits {
     /// already gated `clock`, the counter advances exactly on its clock
     /// rising edges. The feedback path goes through the register's
     /// flip-flops, so a single propagation pass computes the new state.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 7 {
+    const INPUTS: usize = 7;
+    const OUTPUTS: usize = 4;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 7,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         }
@@ -150,50 +200,76 @@ impl Component for ProgramCounter4Bits {
         let save = inputs[5];
         let load = inputs[6];
 
+        // With `FAST`, a High clock disables the register's master
+        // latches: the slaves capture the value preloaded during the
+        // Low tick and the data inputs are ignored. The adder and
+        // both multiplexers are therefore skipped and the register
+        // receives dummy driven data. Low-clock calls always run the
+        // full combinational path, since the masters must preload
+        // `state + 1` (or the load data) there.
+        if FAST && clock == Signal::Driven(Bit::High) {
+            let mut register_inputs = [Signal::Driven(Bit::Low); 11];
+            register_inputs[8] = clock;
+            register_inputs[9] = clock;
+            register_inputs[10] = Signal::Driven(Bit::High);
+
+            let mut stored = [Signal::HighImpedance; 8];
+            self.register.conduct_into(&register_inputs, &mut stored)?;
+
+            return self.gate_output(load, &stored, outputs);
+        }
+
         // incremented = state + 1, LSB first. The adder also returns a
         // carry bit, which is not needed here.
         let state = self.register.state();
-        let mut adder_inputs: Vec<Signal> = Vec::with_capacity(17);
-        adder_inputs.extend(state.iter().copied().map(Signal::from));
-        adder_inputs.extend_from_slice(&ONE_BYTE);
-        adder_inputs.push(Signal::Driven(Bit::Low));
-        let incremented = self.adder.conduct(&adder_inputs)?;
+        let mut adder_inputs = [Signal::HighImpedance; 17];
+
+        for (slot, bit) in adder_inputs[..8].iter_mut().zip(state.iter()) {
+            *slot = Signal::from(*bit);
+        }
+
+        adder_inputs[8..16].copy_from_slice(&ONE_BYTE);
+        adder_inputs[16] = Signal::Driven(Bit::Low);
+
+        let mut incremented = [Signal::HighImpedance; 9];
+        self.adder.conduct_into(&adder_inputs, &mut incremented)?;
 
         // selected = save ? data : state + 1
         //
         // `data` must be zero-extended to 8 bits for the multiplexer.
-        let mut load_inputs: Vec<Signal> = Vec::with_capacity(17);
-        load_inputs.extend_from_slice(&incremented[..8]);
-        load_inputs.extend_from_slice(&inputs[0..4]);
-        load_inputs.extend_from_slice(&ZERO_BYTE[..4]);
-        load_inputs.push(save);
-        let selected = self.load_mux.conduct(&load_inputs)?;
+        let mut load_inputs = [Signal::HighImpedance; 17];
+        load_inputs[..8].copy_from_slice(&incremented[..8]);
+        load_inputs[8..12].copy_from_slice(&inputs[0..4]);
+        load_inputs[12..16].copy_from_slice(&ZERO_BYTE[..4]);
+        load_inputs[16] = save;
+
+        let mut selected = [Signal::HighImpedance; 8];
+        self.load_mux.conduct_into(&load_inputs, &mut selected)?;
 
         // wrapped = selected[4] ? 0 : selected
         //
         // A 4-bit counter only exposes its low bits; counting past 15
         // sets the fifth bit, which resets the stored value to zero.
-        let mut overflow_inputs: Vec<Signal> = Vec::with_capacity(17);
-        overflow_inputs.extend_from_slice(&selected);
-        overflow_inputs.extend_from_slice(&ZERO_BYTE);
-        overflow_inputs.push(selected[4]);
-        let wrapped = self.overflow_mux.conduct(&overflow_inputs)?;
+        let mut overflow_inputs = [Signal::HighImpedance; 17];
+        overflow_inputs[..8].copy_from_slice(&selected);
+        overflow_inputs[8..16].copy_from_slice(&ZERO_BYTE);
+        overflow_inputs[16] = selected[4];
+
+        let mut wrapped = [Signal::HighImpedance; 8];
+        self.overflow_mux.conduct_into(&overflow_inputs, &mut wrapped)?;
 
         // Store `wrapped` on the rising edge; the register outputs are
         // always driven, the external `load` gates them afterwards.
-        let mut register_inputs: Vec<Signal> = Vec::with_capacity(11);
-        register_inputs.extend_from_slice(&wrapped);
-        register_inputs.extend_from_slice(&[clock, clock, Signal::Driven(Bit::High)]);
-        let stored = self.register.conduct(&register_inputs)?;
+        let mut register_inputs = [Signal::HighImpedance; 11];
+        register_inputs[..8].copy_from_slice(&wrapped);
+        register_inputs[8] = clock;
+        register_inputs[9] = clock;
+        register_inputs[10] = Signal::Driven(Bit::High);
 
-        let mut outputs = Vec::with_capacity(ADDRESS_BITS);
+        let mut stored = [Signal::HighImpedance; 8];
+        self.register.conduct_into(&register_inputs, &mut stored)?;
 
-        for (nmos, stored_bit) in self.output_nmos.iter().zip(stored.iter()) {
-            let output = nmos.conduct(&[load, *stored_bit])?;
-            outputs.push(output[0]);
-        }
-
-        Ok(outputs)
+        self.gate_output(load, &stored, outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -240,23 +316,28 @@ impl Ram256Bits {
 
         let register = &self.registers[address];
 
-        let inputs_for = |clock: Bit, save: Bit| -> Vec<Signal> {
-            data.iter()
-                .copied()
-                .map(Signal::from)
-                .chain([
-                    Signal::from(clock),
-                    Signal::from(save),
-                    Signal::Driven(Bit::Low),
-                ])
-                .collect()
-        };
+        let mut inputs = [Signal::HighImpedance; 11];
+
+        for (slot, bit) in inputs[..8].iter_mut().zip(data.iter()) {
+            *slot = Signal::from(*bit);
+        }
+
+        inputs[10] = Signal::Driven(Bit::Low);
+
+        let mut stored = [Signal::HighImpedance; 8];
 
         // Master latch receives the data while the clock is LOW, the
         // slave latch updates during HIGH, then the clock returns LOW.
-        register.conduct(&inputs_for(Bit::Low, Bit::High))?;
-        register.conduct(&inputs_for(Bit::High, Bit::High))?;
-        register.conduct(&inputs_for(Bit::Low, Bit::Low))?;
+        inputs[8] = Signal::from(Bit::Low);
+        inputs[9] = Signal::from(Bit::High);
+        register.conduct_into(&inputs, &mut stored)?;
+
+        inputs[8] = Signal::from(Bit::High);
+        register.conduct_into(&inputs, &mut stored)?;
+
+        inputs[8] = Signal::from(Bit::Low);
+        inputs[9] = Signal::from(Bit::Low);
+        register.conduct_into(&inputs, &mut stored)?;
 
         Ok(())
     }
@@ -283,10 +364,17 @@ impl Component for Ram256Bits {
     /// register can be written or can drive the output bus. Registers
     /// that receive neither `save` nor `load` are skipped entirely:
     /// they cannot change state nor drive the bus.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 15 {
+    const INPUTS: usize = 15;
+    const OUTPUTS: usize = 8;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 15,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         }
@@ -297,40 +385,48 @@ impl Component for Ram256Bits {
         let save = inputs[13];
         let load = inputs[14];
 
-        let selected = self.decoder.conduct(address)?;
-
-        let mut drivers: Vec<[Signal; 8]> = Vec::with_capacity(RAM_REGISTERS);
-
-        for (index, select_line) in selected.iter().enumerate() {
-            let register_save = self.save_gates[index].conduct(&[*select_line, save])?[0];
-            let register_load = self.load_gates[index].conduct(&[*select_line, load])?[0];
-
-            // With `FAST`, an unselected register receives neither
-            // the save nor the load signal: it cannot change state nor
-            // drive the bus, so its flip-flops are left untouched (their
-            // outputs stay floating on the bus row).
-            if FAST
-                && register_save == Signal::Driven(Bit::Low)
-                && register_load == Signal::Driven(Bit::Low)
-            {
-                drivers.push([Signal::HighImpedance; 8]);
-                continue;
-            }
-
-            let mut register_inputs: Vec<Signal> = Vec::with_capacity(11);
-            register_inputs.extend_from_slice(data);
-            register_inputs.extend_from_slice(&[clock, register_save, register_load]);
-
-            let register_output = self.registers[index].conduct(&register_inputs)?;
-
-            drivers.push(
-                register_output
-                    .try_into()
-                    .expect("register always outputs 8 signals"),
-            );
+        // With `FAST`, a memory receiving neither `save` nor `load`
+        // can neither change state nor drive the bus: skip the
+        // decoder, the gating gates and every register entirely.
+        if FAST
+            && save == Signal::Driven(Bit::Low)
+            && load == Signal::Driven(Bit::Low)
+        {
+            outputs.fill(Signal::HighImpedance);
+            return Ok(());
         }
 
-        Ok(bus8(drivers)?.to_vec())
+        let mut selected = [Signal::HighImpedance; 16];
+        self.decoder.conduct_into(address, &mut selected)?;
+
+        let mut drivers = [[Signal::HighImpedance; 8]; RAM_REGISTERS];
+
+        for (index, select_line) in selected.iter().enumerate() {
+            let mut gate_out = [Signal::HighImpedance; 1];
+            self.save_gates[index]
+                .conduct_into(&[*select_line, save], &mut gate_out)?;
+            let register_save = gate_out[0];
+            self.load_gates[index]
+                .conduct_into(&[*select_line, load], &mut gate_out)?;
+            let register_load = gate_out[0];
+
+            // Unselected registers skip themselves inside
+            // `Register8Bits` (their gated `save` and `load` are both
+            // Low): they return a floating row without any flip-flop
+            // propagation.
+            let mut register_inputs = [Signal::HighImpedance; 11];
+            register_inputs[..8].copy_from_slice(data);
+            register_inputs[8] = clock;
+            register_inputs[9] = register_save;
+            register_inputs[10] = register_load;
+
+            self.registers[index]
+                .conduct_into(&register_inputs, &mut drivers[index])?;
+        }
+
+        outputs.copy_from_slice(&bus8(drivers)?);
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {

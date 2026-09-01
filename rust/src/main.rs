@@ -11,7 +11,7 @@
 use std::time::Instant;
 
 use sparse_energy_benchmark::cpu_sap1::Sap1;
-use sparse_energy_benchmark::hardware::bits_to_int;
+use sparse_energy_benchmark::utils::bits_to_int;
 
 const PROGRAM: [u8; 16] = [
     0x1F, // 0: LDA 0xF
@@ -21,7 +21,7 @@ const PROGRAM: [u8; 16] = [
     0x3C, // 4: SUB 0xC
     0x79, // 5: JZ 9
     0x4D, // 6: STA 0xD
-    0x61, // 7: JMP 1
+    0x60, // 7: JMP 0
     0x00, // 8: NOP
     0x1F, // 9: LDA 0xF
     0xF0, // A: HLT
@@ -34,7 +34,7 @@ const PROGRAM: [u8; 16] = [
 
 fn main() {
     let mut cpu = Sap1::default();
-    println!("Number of transistors: {}", cpu.transistor_count());
+
     cpu.load_program(&PROGRAM).expect("program load failed");
 
     let start = Instant::now();
@@ -48,19 +48,13 @@ fn main() {
         let (carry, zero) = cpu.flags();
         println!(
             "Inst {:02}: PC={:X} IR={:02X} ACC={} [0xD]={} [0xF]={} Z={} C={}",
-            inst,
-            pc,
-            ir,
-            acc,
-            ram_d,
-            ram_f,
-            zero as u8,
-            carry as u8,
+            inst, pc, ir, acc, ram_d, ram_f, zero as u8, carry as u8,
         );
         cpu.step_instruction().expect("execution error");
         if cpu.halted() {
             println!("Halted! Final ACC={}", bits_to_int(&cpu.out(), false));
             let elapsed = start.elapsed().as_secs_f64();
+            println!("Number of transistors: {}", cpu.transistor_count());
             println!("Execution time: {elapsed:.6} seconds");
             println!("Clock speed: {:.2} Hz", inst as f64 / elapsed);
             break;

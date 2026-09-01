@@ -10,16 +10,15 @@
 //!   line, detecting short circuits.
 //! * [`stabilize`] — fixed-point iteration for feedback loops
 //!   (latches).
-//! * [`bits_to_int`] / [`int_to_bits`] — conversion helpers; all
-//!   multi-bit values in the project are least-significant bit first.
+//!
+//! Byte↔bit conversion helpers live in [`crate::utils`] instead: they
+//! model no electrical behavior.
 
 /// A binary logic level.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Bit {
-    /// Logic 0.
     #[default]
     Low,
-    /// Logic 1.
     High,
 }
 
@@ -31,9 +30,7 @@ pub enum Bit {
 /// several drivers meet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
-    /// A transistor actively drives the wire to this level.
     Driven(Bit),
-    /// No transistor drives the wire.
     HighImpedance,
 }
 
@@ -84,13 +81,48 @@ impl TryFrom<Signal> for Bit {
 /// internal transistors. Combinational components are pure functions of
 /// their inputs; sequential components also update their internal state
 /// (through interior mutability, since `conduct` takes `&self`).
+///
+/// The propagation core is [`Component::conduct_into`], which writes
+/// into a caller-provided buffer: callers size it on the stack with
+/// [`Component::OUTPUTS`], so a whole simulation tick runs without any
+/// heap allocation. [`Component::conduct`] is the allocating wrapper
+/// kept for tests and one-off callers.
 pub trait Component {
-    /// Propagate the input signals and return the output signals.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError>;
+    /// Exact number of input signals expected by [`Component::conduct_into`].
+    const INPUTS: usize;
+
+    /// Exact number of output signals written by [`Component::conduct_into`].
+    const OUTPUTS: usize;
+
+    /// Propagate the input signals into `outputs`.
+    ///
+    /// `inputs` must hold exactly [`Component::INPUTS`] signals and
+    /// `outputs` exactly [`Component::OUTPUTS`] slots.
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError>;
 
     /// Number of transistors this component is built from,
     /// sub-components included.
     fn transistor_count(&self) -> usize;
+
+    /// Propagate the input signals and return the output signals.
+    ///
+    /// Allocating convenience wrapper over [`Component::conduct_into`].
+    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+        if inputs.len() != Self::INPUTS {
+            return Err(HardwareError::InvalidInputCount {
+                expected: Self::INPUTS,
+                actual: inputs.len(),
+            });
+        }
+
+        let mut outputs = vec![Signal::HighImpedance; Self::OUTPUTS];
+        self.conduct_into(inputs, &mut outputs)?;
+        Ok(outputs)
+    }
 
     /// Convenience wrapper over [`Component::conduct`] for combinational
     /// use: takes logic levels in, requires every output to be driven.
@@ -111,7 +143,14 @@ pub trait Component {
 pub struct Pmos;
 
 impl Component for Pmos {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [gate, source] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -119,10 +158,12 @@ impl Component for Pmos {
             });
         };
 
-        match gate {
-            Signal::Driven(Bit::Low) => Ok(vec![*source]),
-            Signal::Driven(Bit::High) | Signal::HighImpedance => Ok(vec![Signal::HighImpedance]),
-        }
+        outputs[0] = match gate {
+            Signal::Driven(Bit::Low) => *source,
+            Signal::Driven(Bit::High) | Signal::HighImpedance => Signal::HighImpedance,
+        };
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -135,7 +176,14 @@ impl Component for Pmos {
 pub struct Nmos;
 
 impl Component for Nmos {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [gate, source] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -143,10 +191,12 @@ impl Component for Nmos {
             });
         };
 
-        match gate {
-            Signal::Driven(Bit::High) => Ok(vec![*source]),
-            Signal::Driven(Bit::Low) | Signal::HighImpedance => Ok(vec![Signal::HighImpedance]),
-        }
+        outputs[0] = match gate {
+            Signal::Driven(Bit::High) => *source,
+            Signal::Driven(Bit::Low) | Signal::HighImpedance => Signal::HighImpedance,
+        };
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -154,7 +204,7 @@ impl Component for Nmos {
     }
 }
 
-/// Resolve the state of a wire driven by several transistors.
+// / Resolve the state of a wire driven by several transistors.
 ///
 /// Floating drivers have no effect and agreeing drivers are merged; two
 /// drivers pulling in opposite directions is a short circuit.
@@ -206,43 +256,6 @@ where
     }
 
     Ok(result)
-}
-
-/// Pack up to eight bits into a byte.
-///
-/// # Panics
-///
-/// Panics when `bits` is longer than eight.
-pub fn bits_to_int(bits: &[Bit], msb_first: bool) -> u8 {
-    assert!(
-        bits.len() <= 8,
-        "The project only manipulates 8-bit values."
-    );
-
-    let mut result: u8 = 0;
-
-    if msb_first {
-        for bit in bits {
-            result = (result << 1) | *bit as u8;
-        }
-    } else {
-        for (index, bit) in bits.iter().enumerate() {
-            result |= (*bit as u8) << index;
-        }
-    }
-
-    result
-}
-
-/// Expand a byte into eight bits, least significant bit first.
-pub fn int_to_bits(value: u8) -> [Bit; 8] {
-    core::array::from_fn(|index| {
-        if (value >> index) & 1 == 1 {
-            Bit::High
-        } else {
-            Bit::Low
-        }
-    })
 }
 
 /// Run a feedback loop until its state stops changing.
@@ -585,32 +598,6 @@ mod bus8_tests {
                 first: Bit::Low,
                 second: Bit::High,
             })
-        );
-    }
-}
-
-#[cfg(test)]
-mod bits_to_int_tests {
-    use super::*;
-    use Bit::{High, Low};
-
-    #[test]
-    fn test_empty_is_zero() {
-        assert_eq!(bits_to_int(&[], false), 0);
-    }
-
-    #[test]
-    fn test_lsb_first_by_default() {
-        assert_eq!(bits_to_int(&[High, Low, High], false), 5);
-        assert_eq!(bits_to_int(&[High; 8], false), 255);
-    }
-
-    #[test]
-    fn test_msb_first() {
-        assert_eq!(bits_to_int(&[High, Low, High], true), 0b101);
-        assert_eq!(
-            bits_to_int(&[Low, Low, Low, Low, High, Low, High, Low], true),
-            0x0A
         );
     }
 }

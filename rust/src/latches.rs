@@ -37,6 +37,7 @@ use std::cell::Cell;
 use crate::gates::{AndGate, NorGate, NotGate};
 use crate::hardware::{Bit, Component, HardwareError, Nmos, Signal, stabilize};
 use crate::mux::Mux2x1;
+use crate::FAST;
 
 pub const COUNTER_BITS: usize = 6;
 const MAX_STABILIZATION_ITERATIONS: usize = 3;
@@ -74,6 +75,9 @@ impl SRLatch {
 }
 
 impl Component for SRLatch {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 2;
+
     /// Inputs:
     ///
     /// - 0: set
@@ -89,10 +93,14 @@ impl Component for SRLatch {
     /// HIGH is rejected: Q and Q_bar would stop being complementary,
     /// and real silicon becomes metastable when both inputs are
     /// released together.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [set_input, reset_input] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 2,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
@@ -104,30 +112,39 @@ impl Component for SRLatch {
             return Err(HardwareError::SrlatchForbiddenInput);
         }
 
-        stabilize(
-            || (self.q.get(), self.q_bar.get()),
-            || {
-                let new_q_bar = self
-                    .nor1
-                    .conduct(&[set, Signal::from(self.q.get())])
-                    .expect("a NOR gate with driven inputs cannot fail")[0];
-                let new_q = self
-                    .nor2
-                    .conduct(&[reset, new_q_bar])
-                    .expect("a NOR gate with driven inputs cannot fail")[0];
+        // With `FAST`, a latch whose inputs are both LOW is in its
+        // hold state: the feedback loop is settled and the outputs
+        // cannot change, so return them directly instead of running
+        // the stabilization to a fixed point it already reached.
+        if !(FAST && set == Signal::from(Bit::Low) && reset == Signal::from(Bit::Low)) {
+            stabilize(
+                || (self.q.get(), self.q_bar.get()),
+                || {
+                    let mut gate_out = [Signal::HighImpedance; 1];
 
-                self.q_bar
-                    .set(Bit::try_from(new_q_bar).expect("NOR gates always drive their output"));
-                self.q
-                    .set(Bit::try_from(new_q).expect("NOR gates always drive their output"));
-            },
-            MAX_STABILIZATION_ITERATIONS,
-        )?;
+                    self.nor1
+                        .conduct_into(&[set, Signal::from(self.q.get())], &mut gate_out)
+                        .expect("a NOR gate with driven inputs cannot fail");
+                    let new_q_bar = gate_out[0];
 
-        Ok(vec![
-            Signal::from(self.q.get()),
-            Signal::from(self.q_bar.get()),
-        ])
+                    self.nor2
+                        .conduct_into(&[reset, new_q_bar], &mut gate_out)
+                        .expect("a NOR gate with driven inputs cannot fail");
+                    let new_q = gate_out[0];
+
+                    self.q_bar
+                        .set(Bit::try_from(new_q_bar).expect("NOR gates always drive their output"));
+                    self.q
+                        .set(Bit::try_from(new_q).expect("NOR gates always drive their output"));
+                },
+                MAX_STABILIZATION_ITERATIONS,
+            )?;
+        }
+
+        outputs[0] = Signal::from(self.q.get());
+        outputs[1] = Signal::from(self.q_bar.get());
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -157,6 +174,9 @@ impl DLatch {
 }
 
 impl Component for DLatch {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 2;
+
     /// Inputs:
     ///
     /// - 0: data
@@ -168,19 +188,30 @@ impl Component for DLatch {
     /// - 1: q_bar
     ///
     /// Follow `data` while `enable` is High, hold otherwise.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [data, enable] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 2,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
 
-        let not_data = self.not_data.conduct(&[*data])?;
-        let set = self.and_set.conduct(&[*data, *enable])?;
-        let reset = self.and_reset.conduct(&[not_data[0], *enable])?;
+        let mut single = [Signal::HighImpedance; 1];
 
-        self.sr_latch.conduct(&[set[0], reset[0]])
+        self.not_data.conduct_into(&[*data], &mut single)?;
+        let not_data = single[0];
+
+        self.and_set.conduct_into(&[*data, *enable], &mut single)?;
+        let set = single[0];
+
+        self.and_reset.conduct_into(&[not_data, *enable], &mut single)?;
+        let reset = single[0];
+
+        self.sr_latch.conduct_into(&[set, reset], outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -212,6 +243,9 @@ impl DFlipFlop {
 }
 
 impl Component for DFlipFlop {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 2;
+
     /// Inputs:
     ///
     /// - 0: data
@@ -223,18 +257,29 @@ impl Component for DFlipFlop {
     /// - 1: q_bar
     ///
     /// Capture `data` on the rising edge of `clock`.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [data, clock] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 2,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
 
-        let not_clock = self.not_clock.conduct(&[*clock])?;
-        let master_output = self.master_latch.conduct(&[*data, not_clock[0]])?;
+        let mut single = [Signal::HighImpedance; 1];
 
-        self.slave_latch.conduct(&[master_output[0], *clock])
+        self.not_clock.conduct_into(&[*clock], &mut single)?;
+        let not_clock = single[0];
+
+        let mut master_out = [Signal::HighImpedance; DLatch::OUTPUTS];
+        self.master_latch
+            .conduct_into(&[*data, not_clock], &mut master_out)?;
+        let master_output = master_out[0];
+
+        self.slave_latch.conduct_into(&[master_output, *clock], outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -266,6 +311,9 @@ impl DFlipFlopSave {
 }
 
 impl Component for DFlipFlopSave {
+    const INPUTS: usize = 3;
+    const OUTPUTS: usize = 2;
+
     /// Inputs:
     ///
     /// - 0: data
@@ -280,21 +328,57 @@ impl Component for DFlipFlopSave {
     /// Capture `data` on the rising edge only if `save` is High. When
     /// `save` is Low, the slave is fed its own output, so the rising
     /// edge keeps the previous value.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    ///
+    /// The master latch samples `data` during the LOW clock phase,
+    /// before the rising edge latches it — even when `save` is still
+    /// LOW, since `save` may rise exactly with the clock (a register
+    /// whose `save` input is the clock itself). A floating `data` line
+    /// with the capture armed (`save` High) would latch an undefined
+    /// level and is rejected ([`HardwareError::InvalidBit`]); with the
+    /// write disabled (`save` Low) it is ignored: the master holds its
+    /// previous value and the slave mux below discards it anyway.
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [data, clock, save] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 3,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
 
-        let not_clock = self.not_clock.conduct(&[*clock])?;
-        let master_output = self.master_latch.conduct(&[*data, not_clock[0]])?;
-        let selected_input =
-            self.mux
-                .conduct(&[Signal::from(self.slave_latch.q()), master_output[0], *save])?;
+        let armed = *save == Signal::Driven(Bit::High);
+        let mut single = [Signal::HighImpedance; 1];
+        let mut latch_out = [Signal::HighImpedance; DLatch::OUTPUTS];
 
-        self.slave_latch.conduct(&[selected_input[0], *clock])
+        self.not_clock.conduct_into(&[*clock], &mut single)?;
+        let not_clock = single[0];
+
+        let master_output = match Bit::try_from(*data) {
+            // Driven line: the master samples it while the clock is LOW.
+            Ok(_) => {
+                self.master_latch
+                    .conduct_into(&[*data, not_clock], &mut latch_out)?;
+                latch_out[0]
+            }
+            // Floating line with the capture armed: refused, an
+            // undefined level must never be latched.
+            Err(err) if armed => return Err(err),
+            // Floating line while the write is disabled: the master
+            // holds its previous value, and the slave mux below ignores
+            // it (it selects the slave's own output).
+            Err(_) => Signal::from(self.master_latch.q()),
+        };
+
+        self.mux.conduct_into(
+            &[Signal::from(self.slave_latch.q()), master_output, *save],
+            &mut single,
+        )?;
+        let selected_input = single[0];
+
+        self.slave_latch.conduct_into(&[selected_input, *clock], outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -326,6 +410,9 @@ impl DFlipFlopSaveLoad {
 }
 
 impl Component for DFlipFlopSaveLoad {
+    const INPUTS: usize = 4;
+    const OUTPUTS: usize = 2;
+
     /// Inputs:
     ///
     /// - 0: data
@@ -339,19 +426,30 @@ impl Component for DFlipFlopSaveLoad {
     /// - 1: q_bar, floating when `load` is Low
     ///
     /// Behave as `DFlipFlopSave`; float the outputs when `load` is Low.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [data, clock, save, load] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 4,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
 
-        let outputs = self.flip_flop.conduct(&[*data, *clock, *save])?;
-        let q = self.nmos_q.conduct(&[*load, outputs[0]])?;
-        let q_bar = self.nmos_q_bar.conduct(&[*load, outputs[1]])?;
+        let mut single = [Signal::HighImpedance; 1];
+        let mut flip_flop_out = [Signal::HighImpedance; 2];
 
-        Ok(vec![q[0], q_bar[0]])
+        self.flip_flop.conduct_into(&[*data, *clock, *save], &mut flip_flop_out)?;
+
+        self.nmos_q.conduct_into(&[*load, flip_flop_out[0]], &mut single)?;
+        outputs[0] = single[0];
+
+        self.nmos_q_bar.conduct_into(&[*load, flip_flop_out[1]], &mut single)?;
+        outputs[1] = single[0];
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -404,6 +502,9 @@ impl Default for OneHotCounter6Bits {
 }
 
 impl Component for OneHotCounter6Bits {
+    const INPUTS: usize = 1;
+    const OUTPUTS: usize = COUNTER_BITS;
+
     /// Inputs:
     ///
     /// - 0: clock
@@ -419,10 +520,14 @@ impl Component for OneHotCounter6Bits {
     /// fed back to the first one. The edge-triggered flip-flops break
     /// the feedback loop, so a single propagation pass over the ring
     /// computes the new state.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [clock] = inputs else {
             return Err(HardwareError::InvalidInputCount {
-                expected: 1,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         };
@@ -430,13 +535,21 @@ impl Component for OneHotCounter6Bits {
         // The feedback loop is broken by the clock edge, so the shift
         // reads the last flip-flop *before* it advances.
         let wrapped_input = Signal::from(self.flip_flops[COUNTER_BITS - 1].q());
-        let mut previous_q = self.flip_flops[0].conduct(&[wrapped_input, *clock])?[0];
+        let mut single = [Signal::HighImpedance; DFlipFlop::OUTPUTS];
+
+        self.flip_flops[0].conduct_into(&[wrapped_input, *clock], &mut single)?;
+        let mut previous_q = single[0];
 
         for flip_flop in self.flip_flops.iter().skip(1) {
-            previous_q = flip_flop.conduct(&[previous_q, *clock])?[0];
+            flip_flop.conduct_into(&[previous_q, *clock], &mut single)?;
+            previous_q = single[0];
         }
 
-        Ok(self.state().map(Signal::from).to_vec())
+        for (output, bit) in outputs.iter_mut().zip(self.state()) {
+            *output = Signal::from(bit);
+        }
+
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -623,6 +736,27 @@ mod dflipflopsaveload_tests {
             DFlipFlopSaveLoad::default().compute(&[Low, Low, Low, Low]),
             Err(HardwareError::InvalidBit)
         );
+    }
+
+    #[test]
+    fn test_dflipflopsave_floating_data() {
+        let ff = DFlipFlopSave::default();
+
+        // `save` High arms the capture: a floating data line would be
+        // latched as an undefined level, so it is refused.
+        assert_eq!(
+            ff.conduct(&[Signal::HighImpedance, Signal::from(Bit::Low), Signal::from(Bit::High)]),
+            Err(HardwareError::InvalidBit)
+        );
+
+        // `save` Low disables the write: the data input is
+        // disconnected from the master latch, so a floating line is
+        // ignored and the flip-flop keeps its previous value.
+        ff.conduct(&[Signal::HighImpedance, Signal::from(Bit::Low), Signal::from(Bit::Low)])
+            .expect("a disabled save ignores floating data");
+        ff.conduct(&[Signal::from(Bit::High), Signal::from(Bit::High), Signal::from(Bit::Low)])
+            .expect("a disabled save keeps the previous value");
+        assert_eq!(ff.q(), Bit::Low);
     }
 
     #[test]

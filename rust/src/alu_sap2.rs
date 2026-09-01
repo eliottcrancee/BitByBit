@@ -9,9 +9,8 @@
 
 use crate::arithmetic::{Adder8Bits, ZeroDetector8Bits};
 use crate::gates::{AndGate, NotGate, OrGate, XorGate};
-use crate::hardware::{
-    bits_to_int, bus8, int_to_bits, Bit, Component, HardwareError, Nmos, Signal,
-};
+use crate::hardware::{bus8, Bit, Component, HardwareError, Nmos, Signal};
+use crate::utils::{bits_to_int, int_to_bits};
 
 /// Operation codes accepted by [`Alu8BitsSap2`], encoded on the three
 /// `op` lines (`op2 op1 op0`, most significant bit first).
@@ -115,24 +114,30 @@ impl Alu8BitsSap2 {
         operation: AluOperation,
         load: bool,
     ) -> Result<(u8, bool, bool), HardwareError> {
-        let mut inputs: Vec<Signal> = Vec::with_capacity(20);
-        inputs.extend(int_to_bits(a).map(Signal::from));
-        inputs.extend(int_to_bits(b).map(Signal::from));
-        inputs.extend(operation.to_bits().map(Signal::from));
-        inputs.push(Signal::from(if load { Bit::High } else { Bit::Low }));
+        let mut inputs = [Signal::HighImpedance; Alu8BitsSap2::INPUTS];
+        for (index, bit) in int_to_bits(a).into_iter().enumerate() {
+            inputs[index] = Signal::from(bit);
+        }
+        for (index, bit) in int_to_bits(b).into_iter().enumerate() {
+            inputs[8 + index] = Signal::from(bit);
+        }
+        for (index, bit) in operation.to_bits().into_iter().enumerate() {
+            inputs[16 + index] = Signal::from(bit);
+        }
+        inputs[19] = Signal::from(if load { Bit::High } else { Bit::Low });
 
         let output = self.conduct(&inputs)?;
+        let mut result_bits = [Bit::Low; 8];
+
+        for (index, signal) in output[0..8].iter().enumerate() {
+            result_bits[index] = match signal {
+                Signal::Driven(bit) => *bit,
+                Signal::HighImpedance => Bit::Low,
+            };
+        }
+
         Ok((
-            bits_to_int(
-                &output[0..8]
-                    .iter()
-                    .map(|signal| match signal {
-                        Signal::Driven(bit) => *bit,
-                        Signal::HighImpedance => Bit::Low,
-                    })
-                    .collect::<Vec<Bit>>(),
-                false,
-            ),
+            bits_to_int(&result_bits, false),
             output[8] == Signal::Driven(Bit::High),
             output[9] == Signal::Driven(Bit::High),
         ))
@@ -142,10 +147,17 @@ impl Alu8BitsSap2 {
 impl Component for Alu8BitsSap2 {
     /// See the type documentation for the input/output layout and the
     /// operation table.
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
-        if inputs.len() != 20 {
+    const INPUTS: usize = 20;
+    const OUTPUTS: usize = 10;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 20,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
         }
@@ -169,27 +181,44 @@ impl Component for Alu8BitsSap2 {
         //   OR  : NOT(op2) . op1      . op0
         //   XOR : op2      . NOT(op1) . NOT(op0)
         //   NOT : op2      . NOT(op1) . op0
-        let n_msb = self.not_op2.conduct(&[op_msb])?[0];
-        let n_mid = self.not_op1.conduct(&[op_mid])?[0];
-        let n_lsb = self.not_op0.conduct(&[op_lsb])?[0];
+        let mut single = [Signal::HighImpedance; 1];
 
-        let pair_add = self.decode_ands[0].conduct(&[n_msb, n_mid])?;
-        let enable_add = self.decode_ands[1].conduct(&[pair_add[0], n_lsb])?[0];
+        self.not_op2.conduct_into(&[op_msb], &mut single)?;
+        let n_msb = single[0];
+        self.not_op1.conduct_into(&[op_mid], &mut single)?;
+        let n_mid = single[0];
+        self.not_op0.conduct_into(&[op_lsb], &mut single)?;
+        let n_lsb = single[0];
 
-        let pair_sub = self.decode_ands[2].conduct(&[n_msb, n_mid])?;
-        let enable_sub = self.decode_ands[3].conduct(&[pair_sub[0], op_lsb])?[0];
+        self.decode_ands[0].conduct_into(&[n_msb, n_mid], &mut single)?;
+        let upper_add = single[0];
+        self.decode_ands[1].conduct_into(&[upper_add, n_lsb], &mut single)?;
+        let enable_add = single[0];
 
-        let pair_and = self.decode_ands[4].conduct(&[n_msb, op_mid])?;
-        let enable_and = self.decode_ands[5].conduct(&[pair_and[0], n_lsb])?[0];
+        self.decode_ands[2].conduct_into(&[n_msb, n_mid], &mut single)?;
+        let upper_sub = single[0];
+        self.decode_ands[3].conduct_into(&[upper_sub, op_lsb], &mut single)?;
+        let enable_sub = single[0];
 
-        let pair_or = self.decode_ands[6].conduct(&[n_msb, op_mid])?;
-        let enable_or = self.decode_ands[7].conduct(&[pair_or[0], op_lsb])?[0];
+        self.decode_ands[4].conduct_into(&[n_msb, op_mid], &mut single)?;
+        let upper_and = single[0];
+        self.decode_ands[5].conduct_into(&[upper_and, n_lsb], &mut single)?;
+        let enable_and = single[0];
 
-        let pair_xor = self.decode_ands[8].conduct(&[op_msb, n_mid])?;
-        let enable_xor = self.decode_ands[9].conduct(&[pair_xor[0], n_lsb])?[0];
+        self.decode_ands[6].conduct_into(&[n_msb, op_mid], &mut single)?;
+        let upper_or = single[0];
+        self.decode_ands[7].conduct_into(&[upper_or, op_lsb], &mut single)?;
+        let enable_or = single[0];
 
-        let pair_not = self.decode_ands[10].conduct(&[op_msb, n_mid])?;
-        let enable_not = self.decode_ands[11].conduct(&[pair_not[0], op_lsb])?[0];
+        self.decode_ands[8].conduct_into(&[op_msb, n_mid], &mut single)?;
+        let upper_xor = single[0];
+        self.decode_ands[9].conduct_into(&[upper_xor, n_lsb], &mut single)?;
+        let enable_xor = single[0];
+
+        self.decode_ands[10].conduct_into(&[op_msb, n_mid], &mut single)?;
+        let upper_not = single[0];
+        self.decode_ands[11].conduct_into(&[upper_not, op_lsb], &mut single)?;
+        let enable_not = single[0];
 
         let enables: [Signal; 6] = [
             enable_add,
@@ -206,18 +235,20 @@ impl Component for Alu8BitsSap2 {
         //
         //   ADD -> A + B  + 0
         //   SUB -> A + NOT(B) + 1
-        let mut modified_b = Vec::with_capacity(8);
+        let mut modified_b = [Signal::HighImpedance; 8];
 
-        for (xor, b_bit) in self.b_xors.iter().zip(b.iter()) {
-            modified_b.push(xor.conduct(&[*b_bit, enable_sub])?[0]);
+        for index in 0..8 {
+            self.b_xors[index]
+                .conduct_into(&[b[index], enable_sub], &mut modified_b[index..index + 1])?;
         }
 
-        let mut adder_inputs = Vec::with_capacity(17);
-        adder_inputs.extend_from_slice(a);
-        adder_inputs.extend_from_slice(&modified_b);
-        adder_inputs.push(enable_sub);
+        let mut adder_inputs = [Signal::HighImpedance; 17];
+        adder_inputs[..8].copy_from_slice(a);
+        adder_inputs[8..16].copy_from_slice(&modified_b);
+        adder_inputs[16] = enable_sub;
 
-        let adder_output = self.adder.conduct(&adder_inputs)?;
+        let mut adder_output = [Signal::HighImpedance; 9];
+        self.adder.conduct_into(&adder_inputs, &mut adder_output)?;
         let sum = &adder_output[0..8];
         let raw_carry = adder_output[8];
 
@@ -231,27 +262,25 @@ impl Component for Alu8BitsSap2 {
         for index in 0..8 {
             candidates[index][0] = sum[index];
             candidates[index][1] = sum[index];
-            candidates[index][2] =
-                self.and_gates[index].conduct(&[a[index], b[index]])?[0];
-            candidates[index][3] =
-                self.or_gates[index].conduct(&[a[index], b[index]])?[0];
-            candidates[index][4] =
-                self.xor_gates[index].conduct(&[a[index], b[index]])?[0];
-            candidates[index][5] = self.not_gates[index].conduct(&[a[index]])?[0];
+            self.and_gates[index].conduct_into(&[a[index], b[index]], &mut single)?;
+            candidates[index][2] = single[0];
+            self.or_gates[index].conduct_into(&[a[index], b[index]], &mut single)?;
+            candidates[index][3] = single[0];
+            self.xor_gates[index].conduct_into(&[a[index], b[index]], &mut single)?;
+            candidates[index][4] = single[0];
+            self.not_gates[index].conduct_into(&[a[index]], &mut single)?;
+            candidates[index][5] = single[0];
         }
 
         // ---- Tri-state bus: exactly one driver per bit --------------
-        let mut drivers: Vec<[Signal; 8]> = Vec::with_capacity(6);
+        let mut drivers = [[Signal::HighImpedance; 8]; 6];
 
         for (function, enable) in enables.iter().enumerate() {
-            let mut row = [Signal::HighImpedance; 8];
-
-            for (index, slot) in row.iter_mut().enumerate() {
-                *slot = self.output_nmos[index][function]
-                    .conduct(&[*enable, candidates[index][function]])?[0];
+            for (index, slot) in drivers[function].iter_mut().enumerate() {
+                self.output_nmos[index][function]
+                    .conduct_into(&[*enable, candidates[index][function]], &mut single)?;
+                *slot = single[0];
             }
-
-            drivers.push(row);
         }
 
         let resolved = bus8(drivers)?;
@@ -261,21 +290,24 @@ impl Component for Alu8BitsSap2 {
         // The carry only drives during arithmetic operations; it floats
         // otherwise. The zero flag is computed on the resolved internal
         // result.
-        let zero_flag = self.zero_detector.conduct(resolved.as_slice())?[0];
-        let carry_enable = self.arith_or.conduct(&[enable_add, enable_sub])?[0];
-        let carry_flag = self.carry_nmos.conduct(&[carry_enable, raw_carry])?[0];
+        self.zero_detector.conduct_into(&resolved, &mut single)?;
+        let zero_flag = single[0];
+        self.arith_or
+            .conduct_into(&[enable_add, enable_sub], &mut single)?;
+        let carry_enable = single[0];
+        self.carry_nmos
+            .conduct_into(&[carry_enable, raw_carry], &mut single)?;
+        let carry_flag = single[0];
 
         // ---- Output buffer gated by `load` --------------------------
-        let mut result: Vec<Signal> = Vec::with_capacity(10);
-
-        for (nmos, bit) in self.load_buffer_nmos.iter().zip(resolved.iter()) {
-            result.push(nmos.conduct(&[load, *bit])?[0]);
+        for (index, nmos) in self.load_buffer_nmos.iter().enumerate() {
+            nmos.conduct_into(&[load, resolved[index]], &mut outputs[index..index + 1])?;
         }
 
-        result.push(carry_flag);
-        result.push(zero_flag);
+        outputs[8] = carry_flag;
+        outputs[9] = zero_flag;
 
-        Ok(result)
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {

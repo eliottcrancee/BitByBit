@@ -19,16 +19,30 @@ pub struct NotGate {
 }
 
 impl Component for NotGate {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 1;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [input] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 1,
                 actual: inputs.len(),
             });
         };
-        let pmos_output = self.pmos.conduct(&[*input, Signal::Driven(Bit::High)])?;
-        let nmos_output = self.nmos.conduct(&[*input, Signal::Driven(Bit::Low)])?;
-        Ok(vec![wire(pmos_output.into_iter().chain(nmos_output))?])
+
+        let mut pmos_output = [Signal::HighImpedance];
+        self.pmos
+            .conduct_into(&[*input, Signal::Driven(Bit::High)], &mut pmos_output)?;
+        let mut nmos_output = [Signal::HighImpedance];
+        self.nmos
+            .conduct_into(&[*input, Signal::Driven(Bit::Low)], &mut nmos_output)?;
+
+        outputs[0] = wire(pmos_output.into_iter().chain(nmos_output))?;
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -46,19 +60,38 @@ pub struct NandGate {
 }
 
 impl Component for NandGate {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
                 actual: inputs.len(),
             });
         };
-        let pmos_a_output = self.pmos_a.conduct(&[*a, Signal::Driven(Bit::High)])?;
-        let pmos_b_output = self.pmos_b.conduct(&[*b, Signal::Driven(Bit::High)])?;
-        let pull_up = wire(pmos_a_output.into_iter().chain(pmos_b_output))?;
-        let nmos_a_output = self.nmos_a.conduct(&[*a, Signal::Driven(Bit::Low)])?;
-        let nmos_b_output = self.nmos_b.conduct(&[*b, nmos_a_output[0]])?;
-        Ok(vec![wire([pull_up, nmos_b_output[0]])?])
+
+        let mut pmos_a_output = [Signal::HighImpedance];
+        self.pmos_a
+            .conduct_into(&[*a, Signal::Driven(Bit::High)], &mut pmos_a_output)?;
+        let mut pmos_b_output = [Signal::HighImpedance];
+        self.pmos_b
+            .conduct_into(&[*b, Signal::Driven(Bit::High)], &mut pmos_b_output)?;
+        let pull_up = wire([pmos_a_output[0], pmos_b_output[0]])?;
+
+        let mut nmos_a_output = [Signal::HighImpedance];
+        self.nmos_a
+            .conduct_into(&[*a, Signal::Driven(Bit::Low)], &mut nmos_a_output)?;
+        let mut nmos_b_output = [Signal::HighImpedance];
+        self.nmos_b
+            .conduct_into(&[*b, nmos_a_output[0]], &mut nmos_b_output)?;
+
+        outputs[0] = wire([pull_up, nmos_b_output[0]])?;
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -79,19 +112,38 @@ pub struct NorGate {
 }
 
 impl Component for NorGate {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
                 actual: inputs.len(),
             });
         };
-        let pmos_a_output = self.pmos_a.conduct(&[*a, Signal::Driven(Bit::High)])?;
-        let pmos_b_output = self.pmos_b.conduct(&[*b, pmos_a_output[0]])?;
-        let nmos_a_output = self.nmos_a.conduct(&[*a, Signal::Driven(Bit::Low)])?;
-        let nmos_b_output = self.nmos_b.conduct(&[*b, Signal::Driven(Bit::Low)])?;
-        let pull_down = wire(nmos_a_output.into_iter().chain(nmos_b_output))?;
-        Ok(vec![wire([pmos_b_output[0], pull_down])?])
+
+        let mut pmos_a_output = [Signal::HighImpedance];
+        self.pmos_a
+            .conduct_into(&[*a, Signal::Driven(Bit::High)], &mut pmos_a_output)?;
+        let mut pmos_b_output = [Signal::HighImpedance];
+        self.pmos_b
+            .conduct_into(&[*b, pmos_a_output[0]], &mut pmos_b_output)?;
+
+        let mut nmos_a_output = [Signal::HighImpedance];
+        self.nmos_a
+            .conduct_into(&[*a, Signal::Driven(Bit::Low)], &mut nmos_a_output)?;
+        let mut nmos_b_output = [Signal::HighImpedance];
+        self.nmos_b
+            .conduct_into(&[*b, Signal::Driven(Bit::Low)], &mut nmos_b_output)?;
+        let pull_down = wire([nmos_a_output[0], nmos_b_output[0]])?;
+
+        outputs[0] = wire([pmos_b_output[0], pull_down])?;
+        Ok(())
     }
 
     fn transistor_count(&self) -> usize {
@@ -110,15 +162,24 @@ pub struct AndGate {
 }
 
 impl Component for AndGate {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
                 actual: inputs.len(),
             });
         };
-        let nand_output = self.nand.conduct(&[*a, *b])?;
-        self.not.conduct(&nand_output)
+
+        let mut nand_output = [Signal::HighImpedance];
+        self.nand.conduct_into(&[*a, *b], &mut nand_output)?;
+        self.not.conduct_into(&nand_output, outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -134,15 +195,24 @@ pub struct OrGate {
 }
 
 impl Component for OrGate {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
                 actual: inputs.len(),
             });
         };
-        let nor_output = self.nor.conduct(&[*a, *b])?;
-        self.not.conduct(&nor_output)
+
+        let mut nor_output = [Signal::HighImpedance];
+        self.nor.conduct_into(&[*a, *b], &mut nor_output)?;
+        self.not.conduct_into(&nor_output, outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -159,17 +229,32 @@ pub struct XorGate {
 }
 
 impl Component for XorGate {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
                 actual: inputs.len(),
             });
         };
-        let nand1_output = self.nand1.conduct(&[*a, *b])?;
-        let nand2_output = self.nand2.conduct(&[*a, nand1_output[0]])?;
-        let nand3_output = self.nand3.conduct(&[*b, nand1_output[0]])?;
-        self.nand4.conduct(&[nand2_output[0], nand3_output[0]])
+
+        let mut nand1_output = [Signal::HighImpedance];
+        self.nand1.conduct_into(&[*a, *b], &mut nand1_output)?;
+        let mut nand2_output = [Signal::HighImpedance];
+        self.nand2
+            .conduct_into(&[*a, nand1_output[0]], &mut nand2_output)?;
+        let mut nand3_output = [Signal::HighImpedance];
+        self.nand3
+            .conduct_into(&[*b, nand1_output[0]], &mut nand3_output)?;
+
+        self.nand4
+            .conduct_into(&[nand2_output[0], nand3_output[0]], outputs)
     }
 
     fn transistor_count(&self) -> usize {
@@ -188,15 +273,24 @@ pub struct XnorGate {
 }
 
 impl Component for XnorGate {
-    fn conduct(&self, inputs: &[Signal]) -> Result<Vec<Signal>, HardwareError> {
+    const INPUTS: usize = 2;
+    const OUTPUTS: usize = 1;
+
+    fn conduct_into(
+        &self,
+        inputs: &[Signal],
+        outputs: &mut [Signal],
+    ) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
                 actual: inputs.len(),
             });
         };
-        let xor_output = self.xor.conduct(&[*a, *b])?;
-        self.not.conduct(&xor_output)
+
+        let mut xor_output = [Signal::HighImpedance];
+        self.xor.conduct_into(&[*a, *b], &mut xor_output)?;
+        self.not.conduct_into(&xor_output, outputs)
     }
 
     fn transistor_count(&self) -> usize {
