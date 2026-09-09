@@ -1,0 +1,8 @@
+; SAP-2 demo: count down from 3, halt with A = 99.
+MVIB 1
+MVIA 3
+SUB B    ; Z set when A reaches 0
+JZ 11
+JMP 4
+MVIA 99
+HLT

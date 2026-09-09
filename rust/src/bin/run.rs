@@ -1,0 +1,60 @@
+//! CLI: assemble a text program file and run it on SAP-1 or SAP-2.
+//!
+//! ```text
+//! cargo run --bin run -- sap2 programs/sap2_demo.txt
+//! cargo run --bin run -- sap1 programs/sap1_demo.txt
+//! ```
+
+use std::process::ExitCode;
+
+use bitbybit::asm::{assemble_sap1, assemble_sap2};
+use bitbybit::cpu_sap1::Sap1;
+use bitbybit::cpu_sap2::Sap2;
+use bitbybit::utils::bits_to_int;
+
+const MAX_STEPS: usize = 10_000;
+
+fn fail(message: String) -> ExitCode {
+    eprintln!("error: {message}");
+    ExitCode::FAILURE
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 3 || (args[1] != "sap1" && args[1] != "sap2") {
+        eprintln!("usage: run <sap1|sap2> <file>");
+        return ExitCode::FAILURE;
+    }
+    let source = match std::fs::read_to_string(&args[2]) {
+        Ok(source) => source,
+        Err(err) => return fail(format!("cannot read {}: {err}", args[2])),
+    };
+
+    if args[1] == "sap1" {
+        let program = match assemble_sap1(&source) {
+            Ok(program) => program,
+            Err(err) => return fail(err),
+        };
+        let mut cpu = Sap1::default();
+        if let Err(err) = cpu.load_program(&program).and_then(|()| cpu.run(MAX_STEPS)) {
+            return fail(format!("execution failed: {err:?}"));
+        }
+        println!("halted: {}", cpu.halted());
+        println!("acc: {}", bits_to_int(&cpu.out(), false));
+    } else {
+        let program = match assemble_sap2(&source) {
+            Ok(program) => program,
+            Err(err) => return fail(err),
+        };
+        let mut cpu = Sap2::default();
+        if let Err(err) = cpu.load_program(&program).and_then(|()| cpu.run(MAX_STEPS)) {
+            return fail(format!("execution failed: {err:?}"));
+        }
+        let (zero, carry, sign) = cpu.flags();
+        println!("halted: {}", cpu.halted());
+        println!("acc: {}", bits_to_int(&cpu.out(), false));
+        println!("out: {}", bits_to_int(&cpu.output(), false));
+        println!("flags: Z={zero:?} C={carry:?} S={sign:?}");
+    }
+    ExitCode::SUCCESS
+}

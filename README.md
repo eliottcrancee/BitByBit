@@ -142,6 +142,13 @@ yet — jump targets are hand-counted byte offsets.
     HLT
 ```
 
+Run a program file directly (see `programs/` for examples):
+
+```powershell
+cargo run --bin run -- sap2 programs/sap2_demo.txt
+cargo run --bin run -- sap1 programs/sap1_demo.txt
+```
+
 ---
 
 ## Python (legacy)
