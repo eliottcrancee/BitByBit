@@ -27,45 +27,31 @@
   <!-- half-adder wiring -->
   <g stroke="#f59e0b" stroke-width="4" fill="none" stroke-linecap="round">
     <!-- A rail (top) + fan-out down to the AND gate -->
-    <path d="M58 94 H112"/>
-    <path d="M92 94 V144"/>
+    <path d="M58 94 H122"/>
+    <path d="M102 94 V144"/>
     <!-- B rail (bottom) + fan-out up to the XOR gate -->
-    <path d="M58 160 H112"/>
-    <path d="M84 160 V110"/>
+    <path d="M58 160 H122"/>
+    <path d="M94 160 V110"/>
     <!-- stubs into the gates -->
-    <path d="M84 110 H112"/>
-    <path d="M92 144 H112"/>
+    <path d="M94 110 H122"/>
+    <path d="M102 144 H122"/>
     <!-- outputs to the right edge -->
-    <path d="M148 102 H198"/>
-    <path d="M143 151 H198"/>
+    <path d="M158 102 H198"/>
+    <path d="M153 151 H198"/>
   </g>
   <!-- fan-out junctions -->
   <g fill="#fbbf24">
-    <circle cx="92" cy="94" r="4"/>
-    <circle cx="92" cy="144" r="4"/>
-    <circle cx="84" cy="160" r="4"/>
-    <circle cx="84" cy="110" r="4"/>
+    <circle cx="102" cy="94" r="4"/>
+    <circle cx="102" cy="144" r="4"/>
+    <circle cx="94" cy="160" r="4"/>
+    <circle cx="94" cy="110" r="4"/>
   </g>
   <!-- XOR gate (sum): curved face, pointed output -->
-  <path d="M112 88 C126 88 136 94 148 102 C136 110 126 116 112 116 C117 107 117 97 112 88 Z"
+  <path d="M122 88 C136 88 146 94 158 102 C146 110 136 116 122 116 C127 107 127 97 122 88 Z"
         fill="none" stroke="#fbbf24" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M104 88 C112 97 112 107 104 116"
+  <path d="M114 88 C122 97 122 107 114 116"
         fill="none" stroke="#fbbf24" stroke-width="4" stroke-linecap="round"/>
   <!-- AND gate (carry): flat face, round back -->
-  <path d="M112 136 H128 A15 15 0 0 1 128 166 H112 Z"
+  <path d="M122 136 H138 A15 15 0 0 1 138 166 H122 Z"
         fill="none" stroke="#fbbf24" stroke-width="4" stroke-linejoin="round"/>
-  <!-- net labels -->
-  <g font-family="ui-monospace, monospace" font-size="15" text-anchor="middle">
-    <text x="66" y="86" fill="#fbbf24">A</text>
-    <text x="66" y="178" fill="#fbbf24">B</text>
-    <text x="190" y="94" fill="#fbbf24">S</text>
-    <text x="190" y="143" fill="#fbbf24">C</text>
-  </g>
-  <!-- bits in, byte out -->
-  <g fill="#e5e7eb" font-family="ui-monospace, monospace" font-size="17" text-anchor="middle">
-    <text x="20" y="100">1</text>
-    <text x="20" y="166">0</text>
-    <text x="236" y="108">1</text>
-    <text x="236" y="158">0</text>
-  </g>
 </svg>
