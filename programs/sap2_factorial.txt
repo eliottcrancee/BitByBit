@@ -1,0 +1,45 @@
+; 5! = 120. Set N with MVIA (0..5; 6! overflows 8 bits).
+; Data: 0x0100 N, 0x0101 RESULT, 0x0102 PRODUCT, 0x0103 I, 0x0104 J.
+MVIA 5          ; 0 N = 5
+STA 0x0100      ; 2
+MVIA 1          ; 5
+STA 0x0101      ; 7 RESULT = 1
+LDA 0x0100      ; 10
+JZ 91           ; 13 N == 0 -> done (0! = 1)
+; outer @16: RESULT *= N
+MVIA 0          ; 16
+STA 0x0102      ; 18 PRODUCT = 0
+LDA 0x0100      ; 21
+STA 0x0103      ; 24 I = N
+; mul @27: PRODUCT += RESULT, I times
+LDA 0x0103      ; 27
+JZ 72           ; 30 I == 0 -> mul done
+LDA 0x0101      ; 33
+STA 0x0104      ; 36 J = RESULT
+; add @39: PRODUCT++, J times
+LDA 0x0104      ; 39
+JZ 62           ; 42 J == 0 -> next I
+LDA 0x0102      ; 45
+INRA            ; 48
+STA 0x0102      ; 49 PRODUCT++
+LDA 0x0104      ; 52
+DCRA            ; 55
+STA 0x0104      ; 56 J--
+JMP 39          ; 59
+; next I @62
+LDA 0x0103      ; 62
+DCRA            ; 65
+STA 0x0103      ; 66 I--
+JMP 27          ; 69
+; mul done @72
+LDA 0x0102      ; 72
+STA 0x0101      ; 75 RESULT = PRODUCT
+LDA 0x0100      ; 78
+DCRA            ; 81
+STA 0x0100      ; 82 N--
+JZ 91           ; 85 N == 0 -> done
+JMP 16          ; 88
+; done @91
+LDA 0x0101      ; 91
+OUT             ; 94
+HLT             ; 95
