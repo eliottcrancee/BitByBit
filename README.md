@@ -32,26 +32,16 @@ detection — no software branching in the datapath.
 
 ---
 
-## Layout
+## The simulation contract
 
-```
-rust/                      # active implementation (Cargo)
-    src/
-        hardware.rs        # transistors, wire, bus, stabilization
-        gates.rs           # NOT/NAND/NOR/AND/OR/XOR/XNOR from transistors
-        mux.rs / decoder.rs
-        arithmetic.rs      # adders, ALU-SAP1, ALU-SAP2
-        latches.rs         # SR/D latches, flip-flops, sequencers
-        memory.rs          # registers, counters, RAM (256 b, 64 KiB), ports
-        cpu_sap1.rs        # the SAP-1 computer + control unit
-        cpu_sap2.rs        # the SAP-2 computer + decoder/control matrix
-        asm.rs             # tiny assemblers for both CPUs
-        main.rs            # SAP-1 benchmark (assembled from text)
-python/                    # legacy implementation, SAP-1 only (uv-managed)
-    bitbybit/              # hardware.py, gates.py, mux.py, decoder.py,
-                           # arithmetic.py, latches.py, memory.py, cpu_sap1.py
-    test/                  # pytest suite
-```
+1. **Two physical states only**, plus high-impedance for floating wires.
+2. **The transistor is the only primitive.** Gates never use the host
+   language's logic operators.
+3. **Assignments are wires**, not registers.
+4. **State and time.** Sequential parts update on clock edges; a simple loop
+   drives discrete time forward.
+5. `FAST = true` skips provably-inactive transistors only — the same nets,
+   faster.
 
 ---
 
@@ -176,19 +166,6 @@ print(bits_to_int(cpu.out))     # -> 10
 Known quirk (legacy, will not be fixed): `test_gates.py::TestOrGate::
 test_invalid_input` fails — the test expects `InvalidSignalError` where the
 code raises `InvalidBitError`. Everything else (180 tests) passes.
-
----
-
-## The simulation contract
-
-1. **Two physical states only**, plus high-impedance for floating wires.
-2. **The transistor is the only primitive.** Gates never use the host
-   language's logic operators.
-3. **Assignments are wires**, not registers.
-4. **State and time.** Sequential parts update on clock edges; a simple loop
-   drives discrete time forward.
-5. `FAST = true` skips provably-inactive transistors only — the same nets,
-   faster.
 
 ---
 
