@@ -7,6 +7,7 @@
 //! ```
 
 use std::process::ExitCode;
+use std::time::Instant;
 
 use bitbybit::asm::{assemble_sap1, assemble_sap2};
 use bitbybit::cpu_sap1::Sap1;
@@ -35,6 +36,14 @@ fn fail(message: String) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// Timing footer shared by both CPUs.
+fn print_stats(instructions: u64, ticks: u64, elapsed: f64) {
+    println!("instructions: {instructions}");
+    println!("ticks: {ticks}");
+    println!("time: {elapsed:.6} seconds");
+    println!("frequency: {:.0} Hz", instructions as f64 / elapsed);
+}
+
 fn help() -> ExitCode {
     println!("{HELP}");
     ExitCode::SUCCESS
@@ -60,25 +69,31 @@ fn main() -> ExitCode {
             Err(err) => return fail(err),
         };
         let mut cpu = Sap1::default();
+        let start = Instant::now();
         if let Err(err) = cpu.load_program(&program).and_then(|()| cpu.run(MAX_STEPS)) {
             return fail(format!("execution failed: {err:?}"));
         }
+        let elapsed = start.elapsed().as_secs_f64();
         println!("halted: {}", cpu.halted());
         println!("acc: {}", bits_to_int(&cpu.out(), false));
+        print_stats(cpu.instruction_count(), cpu.tick_count(), elapsed);
     } else {
         let program = match assemble_sap2(&source) {
             Ok(program) => program,
             Err(err) => return fail(err),
         };
         let mut cpu = Sap2::default();
+        let start = Instant::now();
         if let Err(err) = cpu.load_program(&program).and_then(|()| cpu.run(MAX_STEPS)) {
             return fail(format!("execution failed: {err:?}"));
         }
+        let elapsed = start.elapsed().as_secs_f64();
         let (zero, carry, sign) = cpu.flags();
         println!("halted: {}", cpu.halted());
         println!("acc: {}", bits_to_int(&cpu.out(), false));
         println!("out: {}", bits_to_int(&cpu.output(), false));
         println!("flags: Z={zero:?} C={carry:?} S={sign:?}");
+        print_stats(cpu.instruction_count(), cpu.tick_count(), elapsed);
     }
     ExitCode::SUCCESS
 }

@@ -373,6 +373,9 @@ pub struct Sap1 {
 
     halted: bool,
     clock_signal: Bit,
+    /// Clock edges toggled and instructions stepped (telemetry).
+    ticks: u64,
+    instructions: u64,
 }
 
 impl Sap1 {
@@ -416,6 +419,16 @@ impl Sap1 {
         (self.carry_flag.state()[0], self.zero_flag.state()[0])
     }
 
+    /// Clock edges toggled so far.
+    pub fn tick_count(&self) -> u64 {
+        self.ticks
+    }
+
+    /// Instructions stepped so far.
+    pub fn instruction_count(&self) -> u64 {
+        self.instructions
+    }
+
     /// Toggle the shared clock and return the new value.
     pub fn clock_tick(&mut self) -> Result<Bit, HardwareError> {
         if self.halted {
@@ -427,6 +440,7 @@ impl Sap1 {
             Bit::High => Bit::Low,
         };
         self.update_at(self.clock_signal)?;
+        self.ticks += 1;
 
         Ok(self.clock_signal)
     }
@@ -464,6 +478,8 @@ impl Sap1 {
         while !self.halted && self.sequencer_state()[0] != Bit::High {
             self.micro_step()?;
         }
+
+        self.instructions += 1;
 
         Ok(())
     }

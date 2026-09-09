@@ -1446,6 +1446,9 @@ pub struct Sap2 {
     input_value: [Bit; 8],
     halted: bool,
     clock_signal: Bit,
+    /// Clock edges toggled and instructions stepped (telemetry).
+    ticks: u64,
+    instructions: u64,
 }
 
 impl Default for Sap2 {
@@ -1477,6 +1480,8 @@ impl Default for Sap2 {
             input_value: [Bit::Low; 8],
             halted: false,
             clock_signal: Bit::Low,
+            ticks: 0,
+            instructions: 0,
         };
         // Park the stack at the top of memory: the ISA has no load-SP
         // instruction, so reset hardware presets 0xFFFF. Both halves
@@ -1557,6 +1562,16 @@ impl Sap2 {
         self.input_value = int_to_bits(value);
     }
 
+    /// Clock edges toggled so far.
+    pub fn tick_count(&self) -> u64 {
+        self.ticks
+    }
+
+    /// Instructions stepped so far.
+    pub fn instruction_count(&self) -> u64 {
+        self.instructions
+    }
+
     /// Toggle the shared clock and return the new value.
     pub fn clock_tick(&mut self) -> Result<Bit, HardwareError> {
         if self.halted {
@@ -1567,6 +1582,7 @@ impl Sap2 {
             Bit::High => Bit::Low,
         };
         self.update_at(self.clock_signal)?;
+        self.ticks += 1;
         Ok(self.clock_signal)
     }
 
@@ -1598,6 +1614,7 @@ impl Sap2 {
         while !self.halted && self.sequencer.state() != [Bit::Low; 4] {
             self.micro_step()?;
         }
+        self.instructions += 1;
         Ok(())
     }
 
