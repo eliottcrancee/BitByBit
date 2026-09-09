@@ -1,8 +1,9 @@
 //! CLI: assemble a text program file and run it on SAP-1 or SAP-2.
 //!
 //! ```text
-//! cargo run --bin run -- sap2 programs/sap2_demo.txt
-//! cargo run --bin run -- sap1 programs/sap1_demo.txt
+//! cargo install --path rust
+//! sap sap2 programs/sap2_demo.txt
+//! sap sap1 programs/sap1_demo.txt
 //! ```
 
 use std::process::ExitCode;
@@ -16,7 +17,7 @@ const MAX_STEPS: usize = 10_000;
 
 const HELP: &str = "Assemble a text program and run it on a transistor-level CPU.
 
-usage: run <sap1|sap2> <file>
+usage: sap <sap1|sap2> <file>
 
 The file holds one instruction per line, `;` comments, blank lines ok,
 numbers decimal or 0x hex, DB emits raw data bytes:
@@ -26,8 +27,8 @@ numbers decimal or 0x hex, DB emits raw data bytes:
     JMP 4      ; hand-counted byte offset (no labels yet)
 
 Examples:
-    run sap2 programs/sap2_demo.txt
-    run sap1 programs/sap1_demo.txt";
+    sap sap2 programs/sap2_demo.txt
+    sap sap1 programs/sap1_demo.txt";
 
 fn fail(message: String) -> ExitCode {
     eprintln!("error: {message}");
@@ -45,7 +46,7 @@ fn main() -> ExitCode {
         return help();
     }
     if args.len() != 3 || (args[1] != "sap1" && args[1] != "sap2") {
-        eprintln!("usage: run <sap1|sap2> <file>");
+        eprintln!("usage: sap <sap1|sap2> <file>");
         return ExitCode::FAILURE;
     }
     let source = match std::fs::read_to_string(&args[2]) {

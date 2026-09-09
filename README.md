@@ -135,8 +135,10 @@ yet — jump targets are hand-counted byte offsets.
 Run a program file directly (see `programs/` for examples):
 
 ```powershell
-cargo run --bin run -- sap2 programs/sap2_demo.txt
-cargo run --bin run -- sap1 programs/sap1_demo.txt
+cargo install --path rust   # installs `sap` (and `bitbybit`) once
+sap sap2 programs/sap2_demo.txt
+sap sap1 programs/sap1_demo.txt
+sap --help
 ```
 
 ---
