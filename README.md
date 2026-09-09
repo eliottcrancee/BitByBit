@@ -1,4 +1,15 @@
-# BitByBit
+<p align="center">
+  <img src="assets/logo.svg" alt="BitByBit logo: traces converging into a CPU die" width="160" />
+</p>
+
+<h1 align="center">BitByBit</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
+  <img src="https://img.shields.io/badge/rust-2021-orange.svg" alt="Rust 2021" />
+  <img src="https://img.shields.io/badge/dependencies-zero-brightgreen.svg" alt="Zero dependencies" />
+  <img src="https://img.shields.io/badge/python-3.13%2B_legacy-3776AB.svg" alt="Python 3.13+ (legacy)" />
+</p>
 
 **From a single transistor to working SAP-1 and SAP-2 CPUs — simulated gate by gate.**
 
