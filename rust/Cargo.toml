@@ -3,6 +3,7 @@ name = "bitbybit"
 version = "0.1.0"
 edition = "2021"
 description = "SAP-1 and SAP-2 CPUs simulated at the transistor level"
+default-run = "bitbybit"
 
 [lib]
 # The doc comments contain pseudo-code diagrams, not runnable Rust examples.
