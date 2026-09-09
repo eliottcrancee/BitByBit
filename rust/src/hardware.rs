@@ -98,11 +98,7 @@ pub trait Component {
     ///
     /// `inputs` must hold exactly [`Component::INPUTS`] signals and
     /// `outputs` exactly [`Component::OUTPUTS`] slots.
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError>;
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError>;
 
     /// Number of transistors this component is built from,
     /// sub-components included.
@@ -146,11 +142,7 @@ impl Component for Pmos {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [gate, source] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -179,11 +171,7 @@ impl Component for Nmos {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [gate, source] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,

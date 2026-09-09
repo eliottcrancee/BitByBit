@@ -9,7 +9,7 @@
 //! * AND = NAND + NOT and OR = NOR + NOT (6T)
 //! * XOR — four NAND gates (16T), XNOR = XOR + NOT (18T)
 
-use crate::hardware::{Bit, Component, HardwareError, Nmos, Pmos, Signal, wire};
+use crate::hardware::{wire, Bit, Component, HardwareError, Nmos, Pmos, Signal};
 
 /// Inverter: 1 PMOS pulling up, 1 NMOS pulling down.
 #[derive(Debug, Default)]
@@ -22,11 +22,7 @@ impl Component for NotGate {
     const INPUTS: usize = 1;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [input] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 1,
@@ -63,11 +59,7 @@ impl Component for NandGate {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -115,11 +107,7 @@ impl Component for NorGate {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -165,11 +153,7 @@ impl Component for AndGate {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -198,11 +182,7 @@ impl Component for OrGate {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -232,11 +212,7 @@ impl Component for XorGate {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -276,11 +252,7 @@ impl Component for XnorGate {
     const INPUTS: usize = 2;
     const OUTPUTS: usize = 1;
 
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,

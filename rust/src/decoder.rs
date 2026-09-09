@@ -33,11 +33,7 @@ impl Component for Decoder2to4 {
     /// Outputs:
     ///
     /// - exactly one output is Driven(High): the one at index `2 * a + b`.
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 2,
@@ -88,11 +84,7 @@ impl Component for Decoder4to16 {
     /// Outputs:
     ///
     /// - exactly one output is Driven(High): the one at the input value.
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b, c, d] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 4,
@@ -103,14 +95,15 @@ impl Component for Decoder4to16 {
         // `Decoder2to4(a, b)` activates index `2 * a + b`, so the most
         // significant bit of each pair must be given first.
         let mut high_group = [Signal::HighImpedance; 4];
-        self.high_decoder
-            .conduct_into(&[*d, *c], &mut high_group)?;
+        self.high_decoder.conduct_into(&[*d, *c], &mut high_group)?;
         let mut low_group = [Signal::HighImpedance; 4];
         self.low_decoder.conduct_into(&[*b, *a], &mut low_group)?;
 
         for index in 0..16 {
-            self.and_gates[index]
-                .conduct_into(&[high_group[index / 4], low_group[index % 4]], &mut outputs[index..index + 1])?;
+            self.and_gates[index].conduct_into(
+                &[high_group[index / 4], low_group[index % 4]],
+                &mut outputs[index..index + 1],
+            )?;
         }
 
         Ok(())

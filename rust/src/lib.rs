@@ -2,9 +2,10 @@
 //!
 //! Fully independent from the Python implementation living in `../python`.
 
-pub mod alu_sap2;
 pub mod arithmetic;
+pub mod asm;
 pub mod cpu_sap1;
+pub mod cpu_sap2;
 pub mod decoder;
 pub mod gates;
 pub mod hardware;

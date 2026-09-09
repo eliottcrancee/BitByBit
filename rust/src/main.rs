@@ -11,32 +11,39 @@
 
 use std::time::Instant;
 
-use sparse_energy_benchmark::cpu_sap1::Sap1;
-use sparse_energy_benchmark::utils::bits_to_int;
+use bitbybit::asm::assemble_sap1;
+use bitbybit::cpu_sap1::Sap1;
+use bitbybit::utils::bits_to_int;
 
-const PROGRAM: [u8; 16] = [
-    0x1E, // 0: LDA 0xE  (load outer count)
-    0x3C, // 1: SUB 0xC  (outer -= 1)
-    0x4E, // 2: STA 0xE
-    0x7B, // 3: JZ 0xB   (outer reached 0 -> HLT; SUB sets Z, not LDA)
-    0x5F, // 4: LDI 0xF  (reload inner count = 15)
-    0x4D, // 5: STA 0xD
-    0x1D, // 6: LDA 0xD  (inner loop)
-    0x3C, // 7: SUB 0xC  (inner -= 1)
-    0x4D, // 8: STA 0xD
-    0x70, // 9: JZ 0     (inner done -> outer loop)
-    0x66, // A: JMP 6
-    0xF0, // B: HLT
-    0x01, // C: constant 1
-    0x0F, // D: initial inner count = 15
-    0x0F, // E: outer count = 15
-    0x00, // F: unused
-];
+/// Same nested countdown loops (15 x 15) as text: the assembler is
+/// dogfooded here, so `main` also tests it end to end.
+const PROGRAM_TEXT: &str = "
+    LDA 0xE ; 0: load outer count
+    SUB 0xC ; 1: outer -= 1
+    STA 0xE ; 2
+    JZ 0xB  ; 3: outer reached 0 -> HLT (SUB sets Z, not LDA)
+    LDI 0xF ; 4: reload inner count = 15
+    STA 0xD ; 5
+    LDA 0xD ; 6: inner loop
+    SUB 0xC ; 7: inner -= 1
+    STA 0xD ; 8
+    JZ 0    ; 9: inner done -> outer loop
+    JMP 6   ; A
+    HLT     ; B
+    DB 0x01 ; C: constant 1
+    DB 0x0F ; D: initial inner count = 15
+    DB 0x0F ; E: outer count = 15
+    DB 0x00 ; F: unused
+";
 
 /// Runs the program once and returns the number of instructions executed.
 fn run_once() -> u64 {
+    let program: [u8; 16] = assemble_sap1(PROGRAM_TEXT)
+        .expect("assembly failed")
+        .try_into()
+        .expect("program must be 16 bytes");
     let mut cpu = Sap1::default();
-    cpu.load_program(&PROGRAM).expect("program load failed");
+    cpu.load_program(&program).expect("program load failed");
 
     let mut instructions = 0u64;
     while !cpu.halted() {
@@ -50,7 +57,7 @@ fn run_once() -> u64 {
 }
 
 fn main() {
-    const RUNS: u32 = 10;
+    const RUNS: u32 = 30;
 
     let start = Instant::now();
     let mut total_instructions = 0u64;

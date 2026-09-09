@@ -32,11 +32,7 @@ impl Component for Mux2x1 {
     /// Outputs:
     ///
     /// - 0: `a` when `select` is Low, `b` when `select` is High.
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [a, b, select] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 3,
@@ -47,8 +43,7 @@ impl Component for Mux2x1 {
         let mut not_select = [Signal::HighImpedance];
         self.not_select.conduct_into(&[*select], &mut not_select)?;
         let mut path_a = [Signal::HighImpedance];
-        self.and_a
-            .conduct_into(&[*a, not_select[0]], &mut path_a)?;
+        self.and_a.conduct_into(&[*a, not_select[0]], &mut path_a)?;
         let mut path_b = [Signal::HighImpedance];
         self.and_b.conduct_into(&[*b, *select], &mut path_b)?;
 
@@ -83,11 +78,7 @@ impl Component for Mux8bits2x1 {
     /// Outputs:
     ///
     /// - 0..8: the selected operand, least-significant bit first.
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         let [.., select] = inputs else {
             return Err(HardwareError::InvalidInputCount {
                 expected: 17,

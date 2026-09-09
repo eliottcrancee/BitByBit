@@ -20,7 +20,7 @@
 //! | 1111            | F    | HLT  : halt the computer                    |
 //! +-----------------+------+---------------------------------------------+
 
-use crate::arithmetic::ALU8Bits;
+use crate::arithmetic::AluSap1;
 use crate::decoder::Decoder4to16;
 use crate::gates::{AndGate, OrGate};
 use crate::hardware::{bus8, Bit, Component, HardwareError, Nmos, Signal};
@@ -230,11 +230,7 @@ impl Component for ControlUnit {
     /// Outputs (in that order):
     ///
     ///     co, mi, ce, ro, ii, io, ai, ao, eo, su, bi, fi, j, ri, hlt
-    fn conduct_into(
-        &self,
-        inputs: &[Signal],
-        outputs: &mut [Signal],
-    ) -> Result<(), HardwareError> {
+    fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
         if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
                 expected: Self::INPUTS,
@@ -259,24 +255,26 @@ impl Component for ControlUnit {
 
         let signals = self.control_signals(&t_states, &opcode, bits[10], bits[11])?;
 
-        outputs.copy_from_slice(&[
-            signals.co,
-            signals.mi,
-            signals.ce,
-            signals.ro,
-            signals.ii,
-            signals.io,
-            signals.ai,
-            signals.ao,
-            signals.eo,
-            signals.su,
-            signals.bi,
-            signals.fi,
-            signals.j,
-            signals.ri,
-            signals.hlt,
-        ]
-        .map(Signal::from));
+        outputs.copy_from_slice(
+            &[
+                signals.co,
+                signals.mi,
+                signals.ce,
+                signals.ro,
+                signals.ii,
+                signals.io,
+                signals.ai,
+                signals.ao,
+                signals.eo,
+                signals.su,
+                signals.bi,
+                signals.fi,
+                signals.j,
+                signals.ri,
+                signals.hlt,
+            ]
+            .map(Signal::from),
+        );
 
         Ok(())
     }
@@ -349,7 +347,7 @@ pub struct Sap1 {
     instruction_register: Register8Bits,
     accumulator: Register8Bits,
     b_register: Register8Bits,
-    alu: ALU8Bits,
+    alu: AluSap1,
     ram: Ram256Bits,
     sequencer: OneHotCounter6Bits,
     control_unit: ControlUnit,
@@ -540,7 +538,10 @@ impl Sap1 {
         inputs[8] = clock;
         inputs[9] = Signal::from(save);
         inputs[10] = Signal::from(Bit::Low);
-        register.conduct_into(&inputs, &mut [Signal::HighImpedance; Register8Bits::OUTPUTS])?;
+        register.conduct_into(
+            &inputs,
+            &mut [Signal::HighImpedance; Register8Bits::OUTPUTS],
+        )?;
         Ok(())
     }
 
@@ -606,7 +607,7 @@ impl Sap1 {
         //    rejected by the hardware, so a micro-state with FI High
         //    but EO Low fails loudly instead of writing stale values.
         let b_state = self.b_register.state();
-        let mut alu_inputs = [Signal::HighImpedance; ALU8Bits::INPUTS];
+        let mut alu_inputs = [Signal::HighImpedance; AluSap1::INPUTS];
         for (index, bit) in acc_state.iter().enumerate() {
             alu_inputs[index] = Signal::from(*bit);
         }
@@ -616,7 +617,7 @@ impl Sap1 {
         alu_inputs[16] = Signal::from(ctrl.su);
         alu_inputs[17] = Signal::from(ctrl.eo);
 
-        let mut alu_output = [Signal::HighImpedance; ALU8Bits::OUTPUTS];
+        let mut alu_output = [Signal::HighImpedance; AluSap1::OUTPUTS];
         self.alu.conduct_into(&alu_inputs, &mut alu_output)?;
         let alu_bus: [Signal; 8] = alu_output[..8]
             .try_into()
@@ -671,11 +672,18 @@ impl Sap1 {
         pc_inputs[4] = pc_clk;
         pc_inputs[5] = Signal::from(ctrl.j);
         pc_inputs[6] = low;
-        self.program_counter
-            .conduct_into(&pc_inputs, &mut [Signal::HighImpedance; ProgramCounter4Bits::OUTPUTS])?;
+        self.program_counter.conduct_into(
+            &pc_inputs,
+            &mut [Signal::HighImpedance; ProgramCounter4Bits::OUTPUTS],
+        )?;
 
         self.clock_register(&self.memory_address, &current_bus, clock_signal, ctrl.mi)?;
-        self.clock_register(&self.instruction_register, &current_bus, clock_signal, ctrl.ii)?;
+        self.clock_register(
+            &self.instruction_register,
+            &current_bus,
+            clock_signal,
+            ctrl.ii,
+        )?;
         self.clock_register(&self.accumulator, &current_bus, clock_signal, ctrl.ai)?;
         self.clock_register(&self.b_register, &current_bus, clock_signal, ctrl.bi)?;
 
