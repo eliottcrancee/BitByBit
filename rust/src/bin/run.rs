@@ -14,13 +14,36 @@ use bitbybit::utils::bits_to_int;
 
 const MAX_STEPS: usize = 10_000;
 
+const HELP: &str = "Assemble a text program and run it on a transistor-level CPU.
+
+usage: run <sap1|sap2> <file>
+
+The file holds one instruction per line, `;` comments, blank lines ok,
+numbers decimal or 0x hex, DB emits raw data bytes:
+
+    MVIB 3     ; sap2: B = 3
+    LDA 0x10   ; sap1: A = MEM[14]
+    JMP 4      ; hand-counted byte offset (no labels yet)
+
+Examples:
+    run sap2 programs/sap2_demo.txt
+    run sap1 programs/sap1_demo.txt";
+
 fn fail(message: String) -> ExitCode {
     eprintln!("error: {message}");
     ExitCode::FAILURE
 }
 
+fn help() -> ExitCode {
+    println!("{HELP}");
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 2 && (args[1] == "-h" || args[1] == "--help") {
+        return help();
+    }
     if args.len() != 3 || (args[1] != "sap1" && args[1] != "sap2") {
         eprintln!("usage: run <sap1|sap2> <file>");
         return ExitCode::FAILURE;
