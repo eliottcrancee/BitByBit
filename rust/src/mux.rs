@@ -79,17 +79,25 @@ impl Component for Mux8bits2x1 {
     ///
     /// - 0..8: the selected operand, least-significant bit first.
     fn conduct_into(&self, inputs: &[Signal], outputs: &mut [Signal]) -> Result<(), HardwareError> {
-        let [.., select] = inputs else {
+        if inputs.len() != Self::INPUTS {
             return Err(HardwareError::InvalidInputCount {
-                expected: 17,
+                expected: Self::INPUTS,
                 actual: inputs.len(),
             });
-        };
+        }
+        if outputs.len() != Self::OUTPUTS {
+            return Err(HardwareError::InvalidInputCount {
+                expected: Self::OUTPUTS,
+                actual: outputs.len(),
+            });
+        }
+
+        let select = inputs[16];
 
         for (index, mux) in self.muxes.iter().enumerate() {
             let a = inputs[index];
             let b = inputs[8 + index];
-            mux.conduct_into(&[a, b, *select], &mut outputs[index..index + 1])?;
+            mux.conduct_into(&[a, b, select], &mut outputs[index..index + 1])?;
         }
 
         Ok(())
@@ -173,5 +181,34 @@ mod mux8bits2x1_tests {
     #[test]
     fn test_transistor_count() {
         assert_eq!(Mux8bits2x1::default().transistor_count(), 160);
+    }
+
+    #[test]
+    fn test_rejects_wrong_input_count() {
+        // `conduct_into` itself must reject every wrong length, never
+        // panic on a slice index. (`conduct` pre-validates, so call the
+        // raw entry point here.)
+        let mut outputs = [Signal::HighImpedance; Mux8bits2x1::OUTPUTS];
+        for length in [0, 1, 8, 16, 18] {
+            let inputs = vec![Signal::HighImpedance; length];
+            assert_eq!(
+                Mux8bits2x1::default().conduct_into(&inputs, &mut outputs),
+                Err(HardwareError::InvalidInputCount {
+                    expected: 17,
+                    actual: length,
+                }),
+                "length {length} must be rejected"
+            );
+        }
+
+        let inputs = [Signal::HighImpedance; Mux8bits2x1::INPUTS];
+        let mut small = [Signal::HighImpedance; Mux8bits2x1::OUTPUTS - 1];
+        assert_eq!(
+            Mux8bits2x1::default().conduct_into(&inputs, &mut small),
+            Err(HardwareError::InvalidInputCount {
+                expected: 8,
+                actual: 7,
+            })
+        );
     }
 }

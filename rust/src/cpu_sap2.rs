@@ -439,7 +439,9 @@ const fn term_flag(t: u8, instr: u8, flag: u8) -> ControlTerm {
 /// - T2..: execution, per instruction. Multi-byte instructions hold
 ///   their low operand byte in MAR.lo (T3) while the PC addresses
 ///   the high operand byte at T5 (T4 idle); MAR.hi captures it,
-///   then T6.. executes.
+///   then T6.. executes. Stack access addresses the RAM directly from
+///   the SP (pre-decrement on push, read-then-increment on pop), so
+///   the MAR is free to hold the CALL target until the very end.
 ///
 /// An opcode that decodes to nothing only ever sees the T0/T1 fetch
 /// terms, then the T counter wraps around: it behaves as a 16-cycle
@@ -469,21 +471,25 @@ const CONTROL_TABLE: [&[ControlTerm]; CONTROL_LINES] = [
         term(5, IN_JM as u8),
         term(5, IN_CALL as u8),
     ],
-    // sp_enable: stack access (the SP drives the address bus).
+    // sp_enable: every stack access drives the address bus directly
+    // from the SP. Pushes pre-decrement (see `sp_count_down`), then
+    // write at the new SP; pops read at SP, then increment. CALL pushes
+    // the return address this way, keeping the MAR free to hold the
+    // target.
     &[
-        term(2, IN_PSHA as u8),
+        term(3, IN_PSHA as u8),
         term(2, IN_POPA as u8),
         term(2, IN_RET as u8),
         term(4, IN_RET as u8),
         term(7, IN_CALL as u8),
+        term(9, IN_CALL as u8),
     ],
     // mar_enable: computed separately (complement of the two lines
     // above), so the table entry is empty.
     &[],
-    // mar_in (16-bit capture of the address bus): fetch and stack
-    // access. The operand bytes of the multi-byte instructions use
-    // the half captures below instead, so T4 stays idle with the MAR
-    // holding the low byte.
+    // mar_in (16-bit capture of the address bus): fetch and operand
+    // fetch. Stack access drives the address bus from the SP directly,
+    // so the MAR is only ever loaded from the address bus at T0/T2.
     &[
         term(0, ANY_INSTR),
         term(2, IN_LDA as u8),
@@ -495,11 +501,6 @@ const CONTROL_TABLE: [&[ControlTerm]; CONTROL_LINES] = [
         term(2, IN_JNZ as u8),
         term(2, IN_JM as u8),
         term(2, IN_CALL as u8),
-        term(2, IN_PSHA as u8),
-        term(2, IN_POPA as u8),
-        term(2, IN_RET as u8),
-        term(4, IN_RET as u8),
-        term(7, IN_CALL as u8),
     ],
     // mar_lo_in: first operand byte (low half of the address) from
     // the data bus.
@@ -544,23 +545,25 @@ const CONTROL_TABLE: [&[ControlTerm]; CONTROL_LINES] = [
         term(5, IN_JM as u8),
         term(5, IN_CALL as u8),
     ],
-    // pc_load (16-bit capture of the address bus = jump): CALL copies
-    // the target first so it can push the return address afterwards;
-    // the conditional jumps gate the term with their flag.
+    // pc_load (16-bit capture of the address bus = jump): CALL pushes
+    // the return address first, then copies the target (still held in
+    // the MAR) at T10; the conditional jumps gate their term with the
+    // matching flag.
     &[
         term(6, IN_JMP as u8),
         term_flag(6, IN_JZ as u8, FLAG_Z),
         term_flag(6, IN_JNZ as u8, FLAG_NOT_Z),
         term_flag(6, IN_JM as u8, FLAG_S),
-        term(6, IN_CALL as u8),
+        term(10, IN_CALL as u8),
     ],
     // pc_save_lo / pc_save_hi: RET pops the return address from the
-    // data bus, high byte first (it sits at the lower address).
-    &[term(5, IN_RET as u8)],
-    &[term(3, IN_RET as u8)],
+    // data bus. CALL pushed the low byte first, so the high byte sits
+    // at the lower address and is read first, at T2.
+    &[term(4, IN_RET as u8)],
+    &[term(2, IN_RET as u8)],
     // pc_out_lo / pc_out_hi: CALL pushes the return address onto the
-    // data bus, low byte first.
-    &[term(8, IN_CALL as u8)],
+    // data bus, low byte first, while the SP addresses the stack.
+    &[term(7, IN_CALL as u8)],
     &[term(9, IN_CALL as u8)],
     // sp_count_up: every popped byte releases one stack slot.
     &[
@@ -568,11 +571,12 @@ const CONTROL_TABLE: [&[ControlTerm]; CONTROL_LINES] = [
         term(5, IN_RET as u8),
         term(3, IN_POPA as u8),
     ],
-    // sp_count_down: every pushed byte reserves one stack slot.
+    // sp_count_down: every pushed byte reserves one stack slot before
+    // the write (pre-decrement), matching the read-then-increment pops.
     &[
-        term(3, IN_PSHA as u8),
+        term(2, IN_PSHA as u8),
+        term(6, IN_CALL as u8),
         term(8, IN_CALL as u8),
-        term(9, IN_CALL as u8),
     ],
     // mem_read: opcode fetch, operand fetches, immediates, LDA, POPA, RET.
     &[
@@ -594,15 +598,16 @@ const CONTROL_TABLE: [&[ControlTerm]; CONTROL_LINES] = [
         term(5, IN_JM as u8),
         term(5, IN_CALL as u8),
         term(6, IN_LDA as u8),
-        term(3, IN_POPA as u8),
-        term(3, IN_RET as u8),
-        term(5, IN_RET as u8),
+        term(2, IN_POPA as u8),
+        term(2, IN_RET as u8),
+        term(4, IN_RET as u8),
     ],
-    // mem_write: STA, PSHA and the two CALL push cycles.
+    // mem_write: STA, PSHA and the two CALL push cycles (T7/T9, after
+    // each pre-decrement).
     &[
         term(6, IN_STA as u8),
         term(3, IN_PSHA as u8),
-        term(8, IN_CALL as u8),
+        term(7, IN_CALL as u8),
         term(9, IN_CALL as u8),
     ],
     // ir_in: opcode capture.
@@ -610,7 +615,7 @@ const CONTROL_TABLE: [&[ControlTerm]; CONTROL_LINES] = [
     // acc_in: immediate loads, memory loads, IN, ALU results, pops.
     &[
         term(3, IN_MVIA as u8),
-        term(3, IN_POPA as u8),
+        term(2, IN_POPA as u8),
         term(6, IN_LDA as u8),
         term(2, IN_IN as u8),
         term(2, IN_ADD as u8),
@@ -683,7 +688,7 @@ const CONTROL_TABLE: [&[ControlTerm]; CONTROL_LINES] = [
         term_flag(6, IN_JZ as u8, FLAG_Z),
         term_flag(6, IN_JNZ as u8, FLAG_NOT_Z),
         term_flag(6, IN_JM as u8, FLAG_S),
-        term(9, IN_CALL as u8),
+        term(10, IN_CALL as u8),
     ],
     // ALU operation bits (see `AluOperation::to_bits`): op0.
     &[
@@ -819,7 +824,9 @@ impl Component for ControlUnit {
 
         for (line, terms) in CONTROL_TABLE.iter().enumerate() {
             // Evaluate every term of this line.
-            let mut term_nets = [Signal::Driven(Bit::Low); 24];
+            // One slot per term; `seq_reset` wires 24 of them, so keep
+            // headroom above that when adding micro-operations.
+            let mut term_nets = [Signal::Driven(Bit::Low); 32];
             let mut term_count = 0;
 
             for spec in terms.iter() {
@@ -1203,23 +1210,21 @@ mod control_unit_tests {
     fn test_call_micro_program() {
         let unit = ControlUnit::default();
 
-        let expected: [Vec<usize>; 10] = [
+        // T0..T5 fetch and capture the 16-bit target while the PC keeps
+        // the return address; T6/T8 pre-decrement the SP, T7/T9 write
+        // the return address bytes, T10 loads the PC from the MAR.
+        let expected: [Vec<usize>; 11] = [
             vec![LN_PC_ENABLE, LN_MAR_IN, LN_PC_COUNT],
             vec![LN_MAR_ENABLE, LN_MEM_READ, LN_IR_IN],
             vec![LN_PC_ENABLE, LN_MAR_IN, LN_PC_COUNT],
             vec![LN_MAR_ENABLE, LN_MAR_LO_IN, LN_MEM_READ],
             vec![LN_MAR_ENABLE],
             vec![LN_PC_ENABLE, LN_MAR_HI_IN, LN_PC_COUNT, LN_MEM_READ],
-            vec![LN_MAR_ENABLE, LN_PC_LOAD],
-            vec![LN_SP_ENABLE, LN_MAR_IN],
-            vec![LN_MAR_ENABLE, LN_PC_OUT_LO, LN_SP_COUNT_DOWN, LN_MEM_WRITE],
-            vec![
-                LN_MAR_ENABLE,
-                LN_PC_OUT_HI,
-                LN_SP_COUNT_DOWN,
-                LN_MEM_WRITE,
-                LN_SEQ_RESET,
-            ],
+            vec![LN_MAR_ENABLE, LN_SP_COUNT_DOWN],
+            vec![LN_SP_ENABLE, LN_PC_OUT_LO, LN_MEM_WRITE],
+            vec![LN_MAR_ENABLE, LN_SP_COUNT_DOWN],
+            vec![LN_SP_ENABLE, LN_PC_OUT_HI, LN_MEM_WRITE],
+            vec![LN_MAR_ENABLE, LN_PC_LOAD, LN_SEQ_RESET],
         ];
 
         for (t, expected_lines) in expected.iter().enumerate() {
@@ -1229,6 +1234,54 @@ mod control_unit_tests {
                 "CALL T{t}"
             );
         }
+    }
+
+    #[test]
+    fn test_ret_micro_program() {
+        let unit = ControlUnit::default();
+
+        // T2 reads the high byte (at the lower address), T4 the low byte.
+        let expected: [Vec<usize>; 6] = [
+            vec![LN_PC_ENABLE, LN_MAR_IN, LN_PC_COUNT],
+            vec![LN_MAR_ENABLE, LN_MEM_READ, LN_IR_IN],
+            vec![LN_SP_ENABLE, LN_PC_SAVE_HI, LN_MEM_READ],
+            vec![LN_MAR_ENABLE, LN_SP_COUNT_UP],
+            vec![LN_SP_ENABLE, LN_PC_SAVE_LO, LN_MEM_READ],
+            vec![LN_MAR_ENABLE, LN_SP_COUNT_UP, LN_SEQ_RESET],
+        ];
+
+        for (t, expected_lines) in expected.iter().enumerate() {
+            assert_eq!(
+                lines(&unit, t, 0xC0, Low, Low),
+                *expected_lines,
+                "RET T{t}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_psha_and_popa_micro_programs() {
+        let unit = ControlUnit::default();
+
+        // PSHA: pre-decrement the SP at T2, write A at T3.
+        assert_eq!(
+            lines(&unit, 2, 0xC1, Low, Low),
+            vec![LN_MAR_ENABLE, LN_SP_COUNT_DOWN]
+        );
+        assert_eq!(
+            lines(&unit, 3, 0xC1, Low, Low),
+            vec![LN_SP_ENABLE, LN_MEM_WRITE, LN_ACC_OUT, LN_SEQ_RESET]
+        );
+
+        // POPA: read at the SP at T2, increment at T3.
+        assert_eq!(
+            lines(&unit, 2, 0xC2, Low, Low),
+            vec![LN_SP_ENABLE, LN_MEM_READ, LN_ACC_IN]
+        );
+        assert_eq!(
+            lines(&unit, 3, 0xC2, Low, Low),
+            vec![LN_MAR_ENABLE, LN_SP_COUNT_UP, LN_SEQ_RESET]
+        );
     }
 
     #[test]
@@ -1257,6 +1310,13 @@ mod control_unit_tests {
         let outputs = unit.compute(&inputs).expect("control unit failed");
         assert_eq!(outputs[LN_MAR_ENABLE], High);
     }
+
+    #[test]
+    fn test_transistor_count() {
+        // not_zero + mar_or + mar_not (10) plus the 176 AND and 148 OR
+        // gates of the control matrix.
+        assert_eq!(ControlUnit::default().transistor_count(), 1954);
+    }
 }
 
 /// Integration: sequencer + decoder + control unit running the CALL
@@ -1278,7 +1338,7 @@ mod sequencer_control_integration_tests {
         let mut visited = Vec::new();
         let mut resets = Vec::new();
 
-        for _ in 0..14 {
+        for _ in 0..15 {
             let t_lines = sequencer.compute(&[Low, Low]).expect("seq failed");
             let t = t_lines
                 .iter()
@@ -1303,10 +1363,10 @@ mod sequencer_control_integration_tests {
                 .expect("settle tick failed");
         }
 
-        // T0..T9, then back to T0 for the next fetch.
-        assert_eq!(visited[0..10], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-        assert_eq!(visited[10..14], [0, 1, 2, 3]);
-        assert_eq!(resets, vec![9]);
+        // T0..T10, then back to T0 for the next fetch.
+        assert_eq!(visited[0..11], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(visited[11..15], [0, 1, 2, 3]);
+        assert_eq!(resets, vec![10]);
     }
 }
 
@@ -1396,6 +1456,12 @@ mod instruction_decoder_tests {
             );
         }
     }
+
+    #[test]
+    fn test_transistor_count() {
+        // 8 inverters (16) + the 132 AND gates of the decode matrix (792).
+        assert_eq!(InstructionDecoder::default().transistor_count(), 808);
+    }
 }
 
 /// The SAP-2 computer: PC/SP/MAR (16-bit), IR/A/B (8-bit), ALU with
@@ -1409,10 +1475,11 @@ mod instruction_decoder_tests {
 /// No new `FAST` shortcut lives here: the components apply the
 /// established ones themselves.
 ///
-// ponytail: CALL pushes both return bytes at the same MAR address
-// and PUSH/POP are off by one slot (write-then-decrement vs
-// read-after-increment); multi-byte stack programs need per-byte
-// `mar_in` cycles plus an updated `test_call_micro_program`.
+/// The hardware stack is consistent: pushes pre-decrement the SP and
+/// write at the new address, pops read at the SP and then increment.
+/// CALL pushes the return address (low byte first) while the MAR keeps
+/// the target, then loads the PC from the MAR; RET reads the high byte
+/// first because it sits at the lower address.
 #[derive(Debug)]
 pub struct Sap2 {
     pc: ProgramCounter16Bits,
@@ -1734,6 +1801,32 @@ impl Sap2 {
         ctrl_in[16 + INSTRUCTION_COUNT + 2] = sign;
         let ctrl = self.control_unit.compute(&ctrl_in)?;
 
+        // Bus exclusivity is an invariant of the micro-code: the
+        // address bus has a single driver (MAR is the wired complement
+        // of PC/SP) and the data bus never carries two drivers at once.
+        debug_assert!(
+            ctrl[LN_PC_ENABLE] == Bit::Low || ctrl[LN_SP_ENABLE] == Bit::Low,
+            "PC and SP never drive the address bus together"
+        );
+        debug_assert!(
+            ctrl[LN_MEM_READ] == Bit::Low || ctrl[LN_MEM_WRITE] == Bit::Low,
+            "the RAM never reads and writes in the same cycle"
+        );
+        debug_assert!(
+            [
+                ctrl[LN_ACC_OUT],
+                ctrl[LN_PC_OUT_LO],
+                ctrl[LN_PC_OUT_HI],
+                ctrl[LN_IN_ENABLE],
+                ctrl[LN_ALU_OUT],
+            ]
+            .iter()
+            .filter(|line| **line == Bit::High)
+            .count()
+                <= 1,
+            "at most one data-bus driver may be active"
+        );
+
         // Address bus: one NMOS row per source, resolved as wires.
         // A row whose enable is Low floats by itself, so every row is
         // propagated unconditionally and only the active one drives.
@@ -2023,6 +2116,33 @@ mod sap2_program_tests {
     }
 
     #[test]
+    fn test_fibonacci_program() {
+        // programs/sap2_fibonacci.txt: display F0..F13 on the output port.
+        let source = include_str!("../../programs/sap2_fibonacci.txt");
+        let program = crate::asm::assemble_sap2(source).expect("assembly failed");
+        let mut cpu = Sap2::default();
+        cpu.load_program(&program).expect("load failed");
+        let mut displayed: Vec<u8> = Vec::new();
+        while !cpu.halted() && cpu.instruction_count() < 100_000 {
+            cpu.step_instruction().expect("step failed");
+            // Record the output port each time an OUT (0x61) completes;
+            // consecutive equal values are distinct Fibonacci terms.
+            if cpu.current_instruction() == 0x61 {
+                displayed.push(bits_to_int(&cpu.output(), false) as u8);
+            }
+        }
+        assert!(cpu.halted(), "program never halted");
+        // F13 = 233 fits in 8 bits; F14 = 377 would overflow.
+        assert_eq!(
+            displayed,
+            vec![0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233]
+        );
+        // The display keeps the last OUT (F13 = 233); the accumulator is
+        // recycled to count N down, so it does not survive the loop.
+        assert_eq!(bits_to_int(&cpu.output(), false), 233);
+    }
+
+    #[test]
     fn test_halted_clock_stops() {
         let mut cpu = Sap2::default();
         cpu.load_program(&[0xF0]).expect("load failed"); // HLT only
@@ -2031,5 +2151,58 @@ mod sap2_program_tests {
         let clock_before = cpu.clock();
         cpu.clock_tick().expect("clock tick failed");
         assert_eq!(cpu.clock(), clock_before);
+    }
+
+    #[test]
+    fn test_push_pop_roundtrip() {
+        // MVIA 9, PSHA, MVIA 0, POPA, HLT
+        let cpu = run_program(&[0x30, 9, 0xC1, 0x30, 0, 0xC2, 0xF0], 100);
+        assert!(cpu.halted());
+        assert_eq!(bits_to_int(&cpu.out(), false), 9);
+        // The stack pointer came back to its parked position.
+        assert_eq!(cpu.sp.state(), [Bit::High; 16]);
+    }
+
+    #[test]
+    fn test_push_pop_is_lifo() {
+        // MVIA 1, PSHA, MVIA 2, PSHA, POPA, POPA, HLT
+        let cpu = run_program(
+            &[0x30, 1, 0xC1, 0x30, 2, 0xC1, 0xC2, 0xC2, 0xF0],
+            100,
+        );
+        assert!(cpu.halted());
+        // The last pushed value (2) comes out first, then 1.
+        assert_eq!(bits_to_int(&cpu.out(), false), 1);
+        assert_eq!(cpu.sp.state(), [Bit::High; 16]);
+    }
+
+    #[test]
+    fn test_call_and_ret() {
+        // 0: MVIA 1, 2: CALL 7, 5: HLT, 6: DB 0,
+        // 7: MVIA 7, 9: RET
+        let cpu = run_program(
+            &[0x30, 1, 0xB0, 7, 0, 0xF0, 0x00, 0x30, 7, 0xC0],
+            100,
+        );
+        assert!(cpu.halted());
+        assert_eq!(bits_to_int(&cpu.out(), false), 7);
+        assert_eq!(cpu.sp.state(), [Bit::High; 16]);
+    }
+
+    #[test]
+    fn test_nested_call_and_ret() {
+        // 0: MVIA 1, 2: CALL 8, 5: HLT, 6-7: padding,
+        // 8: MVIA 2, 10: CALL 16, 13: RET, 14-15: padding,
+        // 16: MVIA 3, 18: RET
+        let cpu = run_program(
+            &[
+                0x30, 1, 0xB0, 8, 0, 0xF0, 0x00, 0x00, 0x30, 2, 0xB0, 16, 0, 0xC0, 0x00, 0x00,
+                0x30, 3, 0xC0,
+            ],
+            200,
+        );
+        assert!(cpu.halted());
+        assert_eq!(bits_to_int(&cpu.out(), false), 3);
+        assert_eq!(cpu.sp.state(), [Bit::High; 16]);
     }
 }

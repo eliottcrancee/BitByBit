@@ -350,12 +350,16 @@ impl Component for DFlipFlopSave {
                     .conduct_into(&[*data, not_clock], &mut latch_out)?;
                 latch_out[0]
             }
-            // Floating line with the capture armed: refused, an
-            // undefined level must never be latched.
-            Err(err) if armed => return Err(err),
-            // Floating line while the write is disabled: the master
-            // holds its previous value, and the slave mux below ignores
-            // it (it selects the slave's own output).
+            // Floating line with the capture armed during the sampling
+            // phase (clock not High): refused, an undefined level must
+            // never be latched. During the High phase the master is
+            // disabled, so the data line is no longer sampled and a
+            // floating input cannot latch anything.
+            Err(err) if armed && *clock != Signal::Driven(Bit::High) => return Err(err),
+            // Floating line while the write is disabled (or after the
+            // rising edge): the master holds its previous value, and
+            // the slave mux below ignores it (it selects the slave's
+            // own output) or captures the already-preloaded value.
             Err(_) => Signal::from(self.master_latch.q()),
         };
 
@@ -690,6 +694,22 @@ mod dflipflopsave_tests {
         for (inputs, expected) in sequence {
             assert_eq!(flip_flop.compute(&inputs), Ok(expected.to_vec()));
         }
+    }
+
+    #[test]
+    fn test_floating_data_is_only_rejected_during_sampling() {
+        let ff = DFlipFlopSave::default();
+
+        // High clock phase with `save` High: the master is disabled, so
+        // the floating line cannot latch anything and the output holds.
+        assert_eq!(
+            ff.conduct(&[
+                Signal::HighImpedance,
+                Signal::from(Bit::High),
+                Signal::from(Bit::High),
+            ]),
+            Ok(vec![Signal::from(Bit::Low), Signal::from(Bit::High)])
+        );
     }
 
     #[test]

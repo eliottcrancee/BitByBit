@@ -1996,6 +1996,18 @@ mod sap2_address_path_tests {
             expected
         );
     }
+
+    #[test]
+    fn test_flags_register_transistor_count() {
+        // Three DFlipFlopSaveLoad (68 each).
+        assert_eq!(FlagsRegister::default().transistor_count(), 204);
+    }
+
+    #[test]
+    fn test_memory_address_register_transistor_count() {
+        // 2 registers (1088) + 4 muxes (640) + 16 NMOS (16).
+        assert_eq!(MemoryAddressRegister16Bits::default().transistor_count(), 1744);
+    }
 }
 
 #[cfg(test)]
@@ -2162,6 +2174,13 @@ mod program_counter_16_tests {
         assert_eq!(byte_of(Low, High), Some(0x12));
         assert_eq!(byte_of(Low, Low), None);
     }
+
+    #[test]
+    fn test_transistor_count() {
+        // 2 registers (1088) + 16 half adders (352) + 6 muxes (960)
+        // + 32 NMOS (32).
+        assert_eq!(ProgramCounter16Bits::default().transistor_count(), 2432);
+    }
 }
 
 #[cfg(test)]
@@ -2273,5 +2292,22 @@ mod sap2_stack_and_io_tests {
         run(Low, Low).expect("idle tick failed");
         run(High, Low).expect("idle tick failed");
         assert_eq!(to_int(&out.state()), 0x5A);
+    }
+
+    #[test]
+    fn test_stack_pointer_transistor_count() {
+        // 2 registers (1088) + 16 full adders (800) + NOT/OR (8)
+        // + 4 muxes (640) + 16 NMOS (16).
+        assert_eq!(StackPointer16Bits::default().transistor_count(), 2552);
+    }
+
+    #[test]
+    fn test_input_port_transistor_count() {
+        assert_eq!(InputPort::default().transistor_count(), 8);
+    }
+
+    #[test]
+    fn test_output_register_transistor_count() {
+        assert_eq!(OutputRegister::default().transistor_count(), 544);
     }
 }

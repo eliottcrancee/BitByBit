@@ -226,4 +226,16 @@ mod sap2_tests {
         assert!(cpu.halted());
         assert_eq!(bits_to_int(&cpu.out(), false), 8);
     }
+
+    #[test]
+    fn test_stack_program_runs() {
+        // programs/sap2_stack.txt: push/pop plus a CALL/RET subroutine.
+        let source = include_str!("../../programs/sap2_stack.txt");
+        let program = assemble_sap2(source).expect("assembly failed");
+        let mut cpu = Sap2::default();
+        cpu.load_program(&program).expect("load failed");
+        cpu.run(200).expect("run failed");
+        assert!(cpu.halted());
+        assert_eq!(bits_to_int(&cpu.out(), false), 4);
+    }
 }

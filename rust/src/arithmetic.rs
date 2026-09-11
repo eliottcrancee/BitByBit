@@ -285,14 +285,12 @@ impl Component for AluSap1 {
     ///
     ///     carry = 1 <=> A >= B
     ///
-    /// The result is gated by `load`. When `load = Low`, the
-    /// result bits are HighImpedance, while the flags remain
-    /// valid.
-    ///
-    /// With `FAST`, a Low `load` skips the whole computation: the
-    /// result bits *and* the flags come out HighImpedance, since a
-    /// caller reading the flags with `load` Low would capture a
-    /// floating line anyway.
+    /// The result is gated by `load`. When `load = Low`, the result
+    /// bits **and** the flags are HighImpedance; a caller reading the
+    /// flags through a save-enabled flip-flop while `load` is Low then
+    /// captures a floating line and is rejected loudly
+    /// ([`HardwareError::InvalidBit`]). The `FAST` shortcut only skips
+    /// the arithmetic, it never changes the outputs.
     const INPUTS: usize = 18;
     const OUTPUTS: usize = 10;
 
@@ -360,8 +358,16 @@ impl Component for AluSap1 {
                 .conduct_into(&[load, adder_output[index]], &mut outputs[index..index + 1])?;
         }
 
-        outputs[8] = adder_output[8];
-        outputs[9] = zero_flag[0];
+        outputs[8] = if load == Signal::Driven(Bit::High) {
+            adder_output[8]
+        } else {
+            Signal::HighImpedance
+        };
+        outputs[9] = if load == Signal::Driven(Bit::High) {
+            zero_flag[0]
+        } else {
+            Signal::HighImpedance
+        };
 
         Ok(())
     }
@@ -523,17 +529,17 @@ impl AluSap2 {
         let output = self.conduct(&inputs)?;
         let mut result_bits = [Bit::Low; 8];
 
+        // A floating result bit means the operation was not driving the
+        // bus (load Low): surface `InvalidBit` instead of silently
+        // reading it as LOW.
         for (index, signal) in output[0..8].iter().enumerate() {
-            result_bits[index] = match signal {
-                Signal::Driven(bit) => *bit,
-                Signal::HighImpedance => Bit::Low,
-            };
+            result_bits[index] = Bit::try_from(*signal)?;
         }
 
         Ok((
             bits_to_int(&result_bits, false),
-            output[8] == Signal::Driven(Bit::High),
-            output[9] == Signal::Driven(Bit::High),
+            Bit::try_from(output[8])? == Bit::High,
+            Bit::try_from(output[9])? == Bit::High,
         ))
     }
 }
@@ -1180,6 +1186,45 @@ mod tests {
         assert_eq!(
             detector.compute(&int_to_bits(255)).unwrap(),
             vec![Bit::High]
+        );
+    }
+
+    #[test]
+    fn test_alu_sap1_load_low_floats_result_and_flags() {
+        let alu = AluSap1::default();
+        let mut inputs: Vec<Signal> = Vec::with_capacity(AluSap1::INPUTS);
+        inputs.extend(int_to_bits(9).map(Signal::Driven));
+        inputs.extend(int_to_bits(4).map(Signal::Driven));
+        inputs.extend([Signal::Driven(Bit::Low), Signal::Driven(Bit::Low)]);
+
+        let output = alu.conduct(&inputs).expect("ALU computation failed");
+        assert_eq!(output, vec![Signal::HighImpedance; AluSap1::OUTPUTS]);
+    }
+
+    #[test]
+    fn test_alu_sap1_transistor_count() {
+        // Adder8Bits (400) + 8 XOR (128) + ZeroDetector (44) + 8 NMOS (8).
+        assert_eq!(AluSap1::default().transistor_count(), 580);
+    }
+
+    #[test]
+    fn test_alu_sap2_transistor_count() {
+        assert_eq!(AluSap2::default().transistor_count(), 1338);
+    }
+
+    #[test]
+    fn test_sign_detector_transistor_count() {
+        assert_eq!(SignDetector8Bits::default().transistor_count(), 1);
+    }
+
+    #[test]
+    fn test_alu_sap2_evaluate_rejects_floating_result() {
+        // With `load` Low the result floats: the convenience wrapper
+        // must surface `InvalidBit`, never default the float to LOW.
+        let alu = AluSap2::default();
+        assert_eq!(
+            alu.evaluate(1, 2, AluOperation::Add, false),
+            Err(HardwareError::InvalidBit)
         );
     }
 }

@@ -1,0 +1,44 @@
+; Fibonacci on the SAP-2: display F0..F13 (0, 1, 1, 2, 3, 5, 8, 13, 21,
+; 34, 55, 89, 144, 233) on the output port, one term per outer loop pass.
+; F13 = 233 still fits in 8 bits; F14 = 377 would overflow, so stop there.
+;
+; There is no "LDB addr" or "ADD MEM" — only ADD B and INRA — so the
+; addition F2 += F1 is done by counting: bump F2 by 1, counter times.
+;
+; Data: 0x0100 N (terms left), 0x0101 F1, 0x0102 F2, 0x0103 counter,
+;       0x0104 old F2.
+MVIA 14         ; 0   N = 14 terms (F0..F13)
+STA 0x0100      ; 2
+MVIA 0          ; 5   F1 = 0
+STA 0x0101      ; 7
+MVIA 1          ; 10  F2 = 1
+STA 0x0102      ; 12
+
+; outer loop @15: show F1, then F2' = F1 + F2, F1' = old F2
+LDA 0x0101      ; 15  A = F1
+OUT             ; 18  display it
+LDA 0x0102      ; 19  A = F2
+STA 0x0104      ; 22  keep old F2 for the next F1
+LDA 0x0101      ; 25  A = F1
+STA 0x0103      ; 28  counter = F1
+LDA 0x0102      ; 31  A = F2 (accumulator to grow)
+
+; inner loop @34: F2 += 1, counter -= 1, repeat while counter > 0
+LDA 0x0103      ; 34  counter == 0?
+JZ 57           ; 37  yes -> addition done
+LDA 0x0102      ; 40
+INRA            ; 43  F2 + 1
+STA 0x0102      ; 44
+LDA 0x0103      ; 47
+DCRA            ; 50  counter - 1
+STA 0x0103      ; 51
+JMP 34          ; 54  back to the check
+
+; addition done @57: F1 = old F2, next outer pass if terms remain
+LDA 0x0104      ; 57  A = old F2
+STA 0x0101      ; 60  F1 = old F2
+LDA 0x0100      ; 63  N
+DCRA            ; 66  N - 1
+STA 0x0100      ; 67
+JNZ 15          ; 70  loop while N > 0
+HLT             ; 73

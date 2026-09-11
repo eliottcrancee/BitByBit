@@ -52,7 +52,7 @@ external dependencies).
 
 ```powershell
 cd rust
-cargo test                 # 160 tests, every module + end-to-end programs
+cargo test                 # 183 tests, every module + end-to-end programs
 cargo run --release        # SAP-1 benchmark assembled from text
 ```
 
@@ -100,14 +100,17 @@ low byte first. Flags: `Z` (zero), `C` (carry), `S` (sign, bit 7).
 | `61` | `OUT` | `output display <- A` (see `output()`) |
 | `70 ll hh` | `JMP addr` | `PC <- addr` |
 | `80`/`90`/`A0 ll hh` | `JZ`/`JNZ`/`JM addr` | jump if `Z` / not `Z` / `S` |
-| `B0 ll hh` | `CALL addr` | push `PC`, jump (see note) |
-| `C0` | `RET` | `PC <- pop()` (see note) |
-| `C1`/`C2` | `PSHA`/`POPA` | push `A` / `A <- pop()` (see note) |
+| `B0 ll hh` | `CALL addr` | push return address, jump |
+| `C0` | `RET` | `PC <- pop()` |
+| `C1`/`C2` | `PSHA`/`POPA` | push `A` / `A <- pop()` |
 | `F0` | `HLT` | halt |
 
-> **Note:** `CALL`/`RET`/`PUSH`/`POP` microcode is known-imperfect (bytes
-> overlap on the stack, see the `ponytail:` note on `Sap2`). Prefer
-> jumps and memory for now.
+The hardware stack lives at the top of memory: the SP is parked at
+`0xFFFF` on reset, pushes pre-decrement it and write at the new address,
+and pops read at the SP before incrementing. `CALL` pushes the return
+address (low byte first) while the MAR holds the target, then loads the
+PC from the MAR; `RET` reads the high byte first because it sits at the
+lower address.
 
 The SAP-1 set (`LDA`/`ADD`/`SUB`/`STA`/`LDI`/`JMP`/`JZ`/`JC`/`HLT`, one byte
 each, 4-bit operand) is documented in `rust/src/cpu_sap1.rs`.

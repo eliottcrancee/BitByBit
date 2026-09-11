@@ -1,0 +1,13 @@
+; Hardware stack demo: PSHA / POPA / CALL / RET.
+; A = ((1 pushed, then popped) + 3) = 4.
+MVIA 1      ; 0  A = 1
+PSHA        ; 2  push A (SP pre-decrements, writes)
+MVIA 2      ; 3  A = 2 (overwritten on purpose)
+POPA        ; 5  A <- pop() = 1
+CALL 11     ; 6  call sub @11, return address 9
+HLT         ; 9  done, A = 4
+DB 0        ; 10 padding so the sub starts at 11
+; sub @11: A <- A + 3
+MVIB 3      ; 11 B = 3
+ADD B       ; 13 A = A + B = 4
+RET         ; 14 PC <- pop()
